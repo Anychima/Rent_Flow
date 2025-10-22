@@ -1,5 +1,8 @@
 import { useState, useEffect } from 'react';
 import './index.css';
+import { AuthProvider, useAuth } from './contexts/AuthContext';
+import Login from './components/Login';
+import Register from './components/Register';
 
 interface Toast {
   id: number;
@@ -50,7 +53,8 @@ interface MaintenanceRequest {
 
 const API_URL = process.env.REACT_APP_BACKEND_URL || 'http://localhost:3001';
 
-function App() {
+function Dashboard() {
+  const { user, signOut } = useAuth();
   const [stats, setStats] = useState<DashboardStats>({
     totalProperties: 0,
     activeLeases: 0,
@@ -183,6 +187,16 @@ function App() {
               </div>
             </div>
             <div className="flex items-center space-x-2">
+              <div className="flex items-center space-x-2 px-3 py-1 bg-gray-100 rounded-lg">
+                <span className="text-sm text-gray-700">{user?.email}</span>
+              </div>
+              <button
+                onClick={signOut}
+                className="px-3 py-1 bg-red-100 text-red-700 rounded-lg text-sm font-medium hover:bg-red-200 transition-colors"
+                title="Sign out"
+              >
+                🚪 Sign Out
+              </button>
               <button
                 onClick={handleRefresh}
                 className="px-3 py-1 bg-gray-100 text-gray-700 rounded-lg text-sm font-medium hover:bg-gray-200 transition-colors"
@@ -523,4 +537,37 @@ function App() {
   );
 }
 
-export default App;
+export default function App() {
+  const [authMode, setAuthMode] = useState<'login' | 'register'>('login');
+
+  return (
+    <AuthProvider>
+      <AppContent authMode={authMode} setAuthMode={setAuthMode} />
+    </AuthProvider>
+  );
+}
+
+function AppContent({ authMode, setAuthMode }: { authMode: 'login' | 'register'; setAuthMode: (mode: 'login' | 'register') => void }) {
+  const { user, loading } = useAuth();
+
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gray-50">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-16 w-16 border-b-2 border-blue-600 mx-auto"></div>
+          <p className="mt-4 text-gray-600">Loading RentFlow AI...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (!user) {
+    return authMode === 'login' ? (
+      <Login onToggleMode={() => setAuthMode('register')} />
+    ) : (
+      <Register onToggleMode={() => setAuthMode('login')} />
+    );
+  }
+
+  return <Dashboard />;
+}
