@@ -78,7 +78,6 @@ function Dashboard() {
   const [filterStatus, setFilterStatus] = useState<string>('all');
   const [showPropertyForm, setShowPropertyForm] = useState(false);
   const [editingProperty, setEditingProperty] = useState<Property | null>(null);
-  const [deletingPropertyId, setDeletingPropertyId] = useState<string | null>(null);
 
   useEffect(() => {
     fetchData();
@@ -142,7 +141,7 @@ function Dashboard() {
 
       // Add owner_id for new properties (should come from auth in production)
       if (!editingProperty) {
-        propertyData.owner_id = 'a0000000-0000-0000-0000-000000000001'; // Default manager
+        (propertyData as any).owner_id = 'a0000000-0000-0000-0000-000000000001'; // Default manager
       }
 
       const response = await fetch(url, {
