@@ -13,6 +13,8 @@
     "test:contracts": "npx hardhat test",
     "test:backend": "cd backend && npm test",
     "deploy:contracts": "npx hardhat run scripts/deploy.ts --network arc",
+    "deploy:db": "npx ts-node scripts/deploy-db.ts",
+    "verify:env": "npx ts-node scripts/verify-env.ts",
     "lint": "eslint . --ext .ts,.tsx",
     "format": "prettier --write \"**/*.{ts,tsx,sol,json,md}\""
   },
@@ -37,6 +39,7 @@
   },
   "dependencies": {
     "@openzeppelin/contracts": "^5.0.1",
+    "@supabase/supabase-js": "^2.76.1",
     "dotenv": "^16.3.1",
     "ethers": "^6.9.0"
   },

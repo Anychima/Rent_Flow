@@ -1,1 +1,242 @@
-Paste backend index.ts content
+import express, { Request, Response } from 'express';
+import cors from 'cors';
+import dotenv from 'dotenv';
+import { createClient } from '@supabase/supabase-js';
+
+dotenv.config();
+
+const app = express();
+const PORT = process.env.PORT || 3001;
+
+// Middleware
+app.use(cors());
+app.use(express.json());
+
+// Initialize Supabase
+const supabase = createClient(
+  process.env.SUPABASE_URL!,
+  process.env.SUPABASE_KEY!
+);
+
+// Health check
+app.get('/api/health', (req: Request, res: Response) => {
+  res.json({ 
+    status: 'healthy',
+    timestamp: new Date().toISOString(),
+    network: process.env.BLOCKCHAIN_NETWORK,
+    deployer: process.env.DEPLOYER_ADDRESS
+  });
+});
+
+// Get all properties
+app.get('/api/properties', async (req: Request, res: Response) => {
+  try {
+    const { data, error } = await supabase
+      .from('properties')
+      .select('*')
+      .eq('is_active', true)
+      .order('created_at', { ascending: false });
+
+    if (error) throw error;
+
+    res.json({ success: true, data });
+  } catch (error) {
+    console.error('Error fetching properties:', error);
+    res.status(500).json({ 
+      success: false, 
+      error: error instanceof Error ? error.message : 'Unknown error' 
+    });
+  }
+});
+
+// Get property by ID
+app.get('/api/properties/:id', async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    const { data, error } = await supabase
+      .from('properties')
+      .select('*')
+      .eq('id', id)
+      .single();
+
+    if (error) throw error;
+
+    res.json({ success: true, data });
+  } catch (error) {
+    console.error('Error fetching property:', error);
+    res.status(500).json({ 
+      success: false, 
+      error: error instanceof Error ? error.message : 'Unknown error' 
+    });
+  }
+});
+
+// Get all leases
+app.get('/api/leases', async (req: Request, res: Response) => {
+  try {
+    const { data, error } = await supabase
+      .from('leases')
+      .select(`
+        *,
+        property:properties(*),
+        tenant:users(*)
+      `)
+      .order('created_at', { ascending: false });
+
+    if (error) throw error;
+
+    res.json({ success: true, data });
+  } catch (error) {
+    console.error('Error fetching leases:', error);
+    res.status(500).json({ 
+      success: false, 
+      error: error instanceof Error ? error.message : 'Unknown error' 
+    });
+  }
+});
+
+// Get maintenance requests
+app.get('/api/maintenance', async (req: Request, res: Response) => {
+  try {
+    const { data, error } = await supabase
+      .from('maintenance_requests')
+      .select(`
+        *,
+        property:properties(*),
+        requestor:users(*)
+      `)
+      .order('created_at', { ascending: false });
+
+    if (error) throw error;
+
+    res.json({ success: true, data });
+  } catch (error) {
+    console.error('Error fetching maintenance requests:', error);
+    res.status(500).json({ 
+      success: false, 
+      error: error instanceof Error ? error.message : 'Unknown error' 
+    });
+  }
+});
+
+// Get rent payments
+app.get('/api/payments', async (req: Request, res: Response) => {
+  try {
+    const { data, error } = await supabase
+      .from('rent_payments')
+      .select(`
+        *,
+        lease:leases(*),
+        tenant:users(*)
+      `)
+      .order('payment_date', { ascending: false })
+      .limit(50);
+
+    if (error) throw error;
+
+    res.json({ success: true, data });
+  } catch (error) {
+    console.error('Error fetching payments:', error);
+    res.status(500).json({ 
+      success: false, 
+      error: error instanceof Error ? error.message : 'Unknown error' 
+    });
+  }
+});
+
+// Get dashboard stats
+app.get('/api/dashboard/stats', async (req: Request, res: Response) => {
+  try {
+    // Get properties count
+    const { count: propertiesCount, error: propError } = await supabase
+      .from('properties')
+      .select('*', { count: 'exact', head: true })
+      .eq('is_active', true);
+
+    if (propError) {
+      console.error('Properties count error:', propError);
+    }
+
+    // Get active leases count
+    const { count: leasesCount, error: leaseError } = await supabase
+      .from('leases')
+      .select('*', { count: 'exact', head: true })
+      .eq('status', 'active');
+
+    if (leaseError) {
+      console.error('Leases count error:', leaseError);
+    }
+
+    // Get pending maintenance count
+    const { count: maintenanceCount, error: maintError } = await supabase
+      .from('maintenance_requests')
+      .select('*', { count: 'exact', head: true })
+      .eq('status', 'pending');
+
+    if (maintError) {
+      console.error('Maintenance count error:', maintError);
+    }
+
+    // Get total revenue from completed payments
+    const { data: payments, error: payError } = await supabase
+      .from('rent_payments')
+      .select('amount_usdc')
+      .eq('status', 'completed');
+
+    if (payError) {
+      console.error('Payments error:', payError);
+    }
+
+    const totalRevenue = payments?.reduce((sum, p: any) => sum + parseFloat(p.amount_usdc || 0), 0) || 0;
+
+    console.log('Dashboard Stats:', {
+      properties: propertiesCount,
+      leases: leasesCount,
+      maintenance: maintenanceCount,
+      revenue: totalRevenue
+    });
+
+    res.json({
+      success: true,
+      data: {
+        totalProperties: propertiesCount || 0,
+        activeLeases: leasesCount || 0,
+        pendingMaintenance: maintenanceCount || 0,
+        totalRevenue: totalRevenue.toFixed(2)
+      }
+    });
+  } catch (error) {
+    console.error('Error fetching dashboard stats:', error);
+    res.status(500).json({ 
+      success: false, 
+      error: error instanceof Error ? error.message : 'Unknown error' 
+    });
+  }
+});
+
+// Get wallet info
+app.get('/api/wallet/info', (req: Request, res: Response) => {
+  res.json({
+    success: true,
+    data: {
+      network: process.env.BLOCKCHAIN_NETWORK || 'solana',
+      deployer: process.env.DEPLOYER_ADDRESS,
+      aiWallet: process.env.AI_WALLET_ADDRESS,
+      walletSetId: process.env.WALLET_SET_ID
+    }
+  });
+});
+
+// Start server
+app.listen(PORT, () => {
+  console.log('🚀 RentFlow AI Backend Server');
+  console.log('================================');
+  console.log(`✅ Server running on http://localhost:${PORT}`);
+  console.log(`🌐 Network: ${process.env.BLOCKCHAIN_NETWORK || 'solana'}`);
+  console.log(`📍 Deployer: ${process.env.DEPLOYER_ADDRESS}`);
+  console.log(`🤖 AI Wallet: ${process.env.AI_WALLET_ADDRESS}`);
+  console.log(`🗄️  Database: ${process.env.SUPABASE_URL}`);
+  console.log('================================\n');
+});
+
+export default app;
