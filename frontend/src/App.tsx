@@ -4,6 +4,7 @@ import { AuthProvider, useAuth } from './contexts/AuthContext';
 import Login from './components/Login';
 import Register from './components/Register';
 import PropertyForm from './components/PropertyForm';
+import LeaseForm from './components/LeaseForm';
 
 interface Toast {
   id: number;
@@ -39,8 +40,14 @@ interface Property {
 
 interface Lease {
   id: string;
+  property_id: string;
+  tenant_id: string;
+  start_date: string;
+  end_date: string;
   status: string;
   monthly_rent_usdc: number;
+  security_deposit_usdc: number;
+  rent_due_day: number;
   property: Property;
   tenant: {
     full_name: string;
@@ -78,6 +85,8 @@ function Dashboard() {
   const [filterStatus, setFilterStatus] = useState<string>('all');
   const [showPropertyForm, setShowPropertyForm] = useState(false);
   const [editingProperty, setEditingProperty] = useState<Property | null>(null);
+  const [showLeaseForm, setShowLeaseForm] = useState(false);
+  const [editingLease, setEditingLease] = useState<Lease | null>(null);
 
   useEffect(() => {
     fetchData();
@@ -168,6 +177,99 @@ function Dashboard() {
     } catch (error) {
       console.error('Error saving property:', error);
       showToast('Error saving property', 'error');
+    }
+  };
+
+  const handleAddLease = () => {
+    setEditingLease(null);
+    setShowLeaseForm(true);
+  };
+
+  const handleEditLease = (lease: Lease) => {
+    setEditingLease(lease);
+    setShowLeaseForm(true);
+  };
+
+  const handleTerminateLease = async (id: string) => {
+    if (!window.confirm('Are you sure you want to terminate this lease?')) {
+      return;
+    }
+
+    try {
+      const response = await fetch(`${API_URL}/api/leases/${id}/terminate`, {
+        method: 'POST',
+      });
+
+      const result = await response.json();
+
+      if (result.success) {
+        showToast('Lease terminated successfully!', 'success');
+        fetchData();
+      } else {
+        showToast('Failed to terminate lease', 'error');
+      }
+    } catch (error) {
+      console.error('Error terminating lease:', error);
+      showToast('Error terminating lease', 'error');
+    }
+  };
+
+  const handleDeleteLease = async (id: string) => {
+    if (!window.confirm('Are you sure you want to delete this lease? This action cannot be undone.')) {
+      return;
+    }
+
+    try {
+      const response = await fetch(`${API_URL}/api/leases/${id}`, {
+        method: 'DELETE',
+      });
+
+      const result = await response.json();
+
+      if (result.success) {
+        showToast('Lease deleted successfully!', 'success');
+        fetchData();
+      } else {
+        showToast('Failed to delete lease', 'error');
+      }
+    } catch (error) {
+      console.error('Error deleting lease:', error);
+      showToast('Error deleting lease', 'error');
+    }
+  };
+
+  const handleLeaseSubmit = async (leaseData: Partial<Lease>) => {
+    try {
+      const url = editingLease 
+        ? `${API_URL}/api/leases/${editingLease.id}`
+        : `${API_URL}/api/leases`;
+      
+      const method = editingLease ? 'PUT' : 'POST';
+
+      const response = await fetch(url, {
+        method,
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(leaseData),
+      });
+
+      const result = await response.json();
+
+      if (result.success) {
+        showToast(
+          editingLease ? 'Lease updated successfully!' : 'Lease created successfully!',
+          'success'
+        );
+        setShowLeaseForm(false);
+        setEditingLease(null);
+        fetchData();
+      } else {
+        showToast(result.error || 'Failed to save lease', 'error');
+      }
+    } catch (error) {
+      console.error('Error saving lease:', error);
+      showToast('Error saving lease', 'error');
     }
   };
 
@@ -492,6 +594,12 @@ function Dashboard() {
           <div>
             <div className="flex justify-between items-center mb-6">
               <h2 className="text-2xl font-bold text-gray-900">Leases</h2>
+              <button
+                onClick={handleAddLease}
+                className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+              >
+                + Create Lease
+              </button>
             </div>
             <div className="bg-white shadow rounded-lg overflow-hidden">
               <table className="min-w-full divide-y divide-gray-200">
@@ -501,6 +609,7 @@ function Dashboard() {
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Tenant</th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Rent</th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
                   </tr>
                 </thead>
                 <tbody className="bg-white divide-y divide-gray-200">
@@ -521,6 +630,33 @@ function Dashboard() {
                         <span className={`px-2 py-1 text-xs font-medium rounded ${getStatusColor(lease.status)}`}>
                           {lease.status}
                         </span>
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm">
+                        <div className="flex items-center space-x-2">
+                          <button
+                            onClick={() => handleEditLease(lease)}
+                            className="text-blue-600 hover:text-blue-900"
+                            title="Edit lease"
+                          >
+                            ✏️
+                          </button>
+                          {lease.status === 'active' && (
+                            <button
+                              onClick={() => handleTerminateLease(lease.id)}
+                              className="text-yellow-600 hover:text-yellow-900"
+                              title="Terminate lease"
+                            >
+                              ⏹️
+                            </button>
+                          )}
+                          <button
+                            onClick={() => handleDeleteLease(lease.id)}
+                            className="text-red-600 hover:text-red-900"
+                            title="Delete lease"
+                          >
+                            🗑️
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   ))}
@@ -636,6 +772,18 @@ function Dashboard() {
             setEditingProperty(null);
           }}
           onSubmit={handlePropertySubmit}
+        />
+      )}
+
+      {/* Lease Form Modal */}
+      {showLeaseForm && (
+        <LeaseForm
+          lease={editingLease}
+          onClose={() => {
+            setShowLeaseForm(false);
+            setEditingLease(null);
+          }}
+          onSubmit={handleLeaseSubmit}
         />
       )}
     </div>

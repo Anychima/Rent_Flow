@@ -176,6 +176,164 @@ app.get('/api/leases', async (req: Request, res: Response) => {
   }
 });
 
+// Get lease by ID
+app.get('/api/leases/:id', async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    const { data, error } = await supabase
+      .from('leases')
+      .select(`
+        *,
+        property:properties(*),
+        tenant:users(*)
+      `)
+      .eq('id', id)
+      .single();
+
+    if (error) throw error;
+
+    res.json({ success: true, data });
+  } catch (error) {
+    console.error('Error fetching lease:', error);
+    res.status(500).json({ 
+      success: false, 
+      error: error instanceof Error ? error.message : 'Unknown error' 
+    });
+  }
+});
+
+// Create new lease
+app.post('/api/leases', async (req: Request, res: Response) => {
+  try {
+    const leaseData = req.body;
+    
+    // Validate required fields
+    const required = ['property_id', 'tenant_id', 'start_date', 'end_date', 'monthly_rent_usdc'];
+    const missing = required.filter(field => !leaseData[field]);
+    
+    if (missing.length > 0) {
+      return res.status(400).json({
+        success: false,
+        error: `Missing required fields: ${missing.join(', ')}`
+      });
+    }
+
+    // Check if property is available
+    const { data: existingLease } = await supabase
+      .from('leases')
+      .select('id')
+      .eq('property_id', leaseData.property_id)
+      .eq('status', 'active')
+      .single();
+
+    if (existingLease) {
+      return res.status(400).json({
+        success: false,
+        error: 'Property already has an active lease'
+      });
+    }
+
+    const { data, error } = await supabase
+      .from('leases')
+      .insert([leaseData])
+      .select(`
+        *,
+        property:properties(*),
+        tenant:users(*)
+      `)
+      .single();
+
+    if (error) throw error;
+
+    res.status(201).json({ success: true, data });
+  } catch (error) {
+    console.error('Error creating lease:', error);
+    res.status(500).json({ 
+      success: false, 
+      error: error instanceof Error ? error.message : 'Unknown error' 
+    });
+  }
+});
+
+// Update lease
+app.put('/api/leases/:id', async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    const updates = req.body;
+
+    const { data, error } = await supabase
+      .from('leases')
+      .update(updates)
+      .eq('id', id)
+      .select(`
+        *,
+        property:properties(*),
+        tenant:users(*)
+      `)
+      .single();
+
+    if (error) throw error;
+
+    res.json({ success: true, data });
+  } catch (error) {
+    console.error('Error updating lease:', error);
+    res.status(500).json({ 
+      success: false, 
+      error: error instanceof Error ? error.message : 'Unknown error' 
+    });
+  }
+});
+
+// Terminate lease
+app.post('/api/leases/:id/terminate', async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+
+    const { data, error } = await supabase
+      .from('leases')
+      .update({ status: 'terminated' })
+      .eq('id', id)
+      .select(`
+        *,
+        property:properties(*),
+        tenant:users(*)
+      `)
+      .single();
+
+    if (error) throw error;
+
+    res.json({ success: true, data, message: 'Lease terminated successfully' });
+  } catch (error) {
+    console.error('Error terminating lease:', error);
+    res.status(500).json({ 
+      success: false, 
+      error: error instanceof Error ? error.message : 'Unknown error' 
+    });
+  }
+});
+
+// Delete lease
+app.delete('/api/leases/:id', async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+
+    const { error } = await supabase
+      .from('leases')
+      .delete()
+      .eq('id', id);
+
+    if (error) throw error;
+
+    res.json({ success: true, message: 'Lease deleted successfully' });
+  } catch (error) {
+    console.error('Error deleting lease:', error);
+    res.status(500).json({ 
+      success: false, 
+      error: error instanceof Error ? error.message : 'Unknown error' 
+    });
+  }
+});
+
 // Get maintenance requests
 app.get('/api/maintenance', async (req: Request, res: Response) => {
   try {
@@ -306,6 +464,61 @@ app.get('/api/wallet/info', (req: Request, res: Response) => {
       walletSetId: process.env.WALLET_SET_ID
     }
   });
+});
+
+// Get available tenants (users with tenant role)
+app.get('/api/tenants', async (req: Request, res: Response) => {
+  try {
+    const { data, error } = await supabase
+      .from('users')
+      .select('*')
+      .eq('user_type', 'tenant')
+      .eq('is_active', true)
+      .order('full_name', { ascending: true });
+
+    if (error) throw error;
+
+    res.json({ success: true, data });
+  } catch (error) {
+    console.error('Error fetching tenants:', error);
+    res.status(500).json({ 
+      success: false, 
+      error: error instanceof Error ? error.message : 'Unknown error' 
+    });
+  }
+});
+
+// Get available properties (active, not leased)
+app.get('/api/properties/available', async (req: Request, res: Response) => {
+  try {
+    // Get all active properties
+    const { data: properties, error: propError } = await supabase
+      .from('properties')
+      .select('*')
+      .eq('is_active', true);
+
+    if (propError) throw propError;
+
+    // Get all active leases
+    const { data: activeLeases, error: leaseError } = await supabase
+      .from('leases')
+      .select('property_id')
+      .eq('status', 'active');
+
+    if (leaseError) throw leaseError;
+
+    // Filter out properties with active leases
+    const leasedPropertyIds = new Set(activeLeases?.map(l => l.property_id) || []);
+    const available = properties?.filter(p => !leasedPropertyIds.has(p.id)) || [];
+
+    res.json({ success: true, data: available });
+  } catch (error) {
+    console.error('Error fetching available properties:', error);
+    res.status(500).json({ 
+      success: false, 
+      error: error instanceof Error ? error.message : 'Unknown error' 
+    });
+  }
 });
 
 // Start server
