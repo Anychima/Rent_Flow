@@ -71,6 +71,87 @@ app.get('/api/properties/:id', async (req: Request, res: Response) => {
   }
 });
 
+// Create new property
+app.post('/api/properties', async (req: Request, res: Response) => {
+  try {
+    const propertyData = req.body;
+    
+    // Validate required fields
+    const required = ['title', 'address', 'city', 'state', 'monthly_rent_usdc', 'security_deposit_usdc'];
+    const missing = required.filter(field => !propertyData[field]);
+    
+    if (missing.length > 0) {
+      return res.status(400).json({
+        success: false,
+        error: `Missing required fields: ${missing.join(', ')}`
+      });
+    }
+
+    const { data, error } = await supabase
+      .from('properties')
+      .insert([propertyData])
+      .select()
+      .single();
+
+    if (error) throw error;
+
+    res.status(201).json({ success: true, data });
+  } catch (error) {
+    console.error('Error creating property:', error);
+    res.status(500).json({ 
+      success: false, 
+      error: error instanceof Error ? error.message : 'Unknown error' 
+    });
+  }
+});
+
+// Update property
+app.put('/api/properties/:id', async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    const updates = req.body;
+
+    const { data, error } = await supabase
+      .from('properties')
+      .update(updates)
+      .eq('id', id)
+      .select()
+      .single();
+
+    if (error) throw error;
+
+    res.json({ success: true, data });
+  } catch (error) {
+    console.error('Error updating property:', error);
+    res.status(500).json({ 
+      success: false, 
+      error: error instanceof Error ? error.message : 'Unknown error' 
+    });
+  }
+});
+
+// Delete property
+app.delete('/api/properties/:id', async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+
+    const { error } = await supabase
+      .from('properties')
+      .delete()
+      .eq('id', id);
+
+    if (error) throw error;
+
+    res.json({ success: true, message: 'Property deleted successfully' });
+  } catch (error) {
+    console.error('Error deleting property:', error);
+    res.status(500).json({ 
+      success: false, 
+      error: error instanceof Error ? error.message : 'Unknown error' 
+    });
+  }
+});
+
 // Get all leases
 app.get('/api/leases', async (req: Request, res: Response) => {
   try {

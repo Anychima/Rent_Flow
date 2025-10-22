@@ -3,6 +3,7 @@ import './index.css';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import Login from './components/Login';
 import Register from './components/Register';
+import PropertyForm from './components/PropertyForm';
 
 interface Toast {
   id: number;
@@ -19,14 +20,20 @@ interface DashboardStats {
 
 interface Property {
   id: string;
+  owner_id?: string;
   title: string;
   address: string;
   city: string;
   state: string;
+  zip_code: string;
+  description: string;
+  property_type: string;
   monthly_rent_usdc: number;
+  security_deposit_usdc: number;
   bedrooms: number;
   bathrooms: number;
   square_feet: number;
+  amenities: string[];
   is_active: boolean;
 }
 
@@ -69,6 +76,9 @@ function Dashboard() {
   const [toasts, setToasts] = useState<Toast[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
   const [filterStatus, setFilterStatus] = useState<string>('all');
+  const [showPropertyForm, setShowPropertyForm] = useState(false);
+  const [editingProperty, setEditingProperty] = useState<Property | null>(null);
+  const [deletingPropertyId, setDeletingPropertyId] = useState<string | null>(null);
 
   useEffect(() => {
     fetchData();
@@ -89,7 +99,77 @@ function Dashboard() {
   };
 
   const handleAddProperty = () => {
-    showToast('Add Property feature coming soon! This will open a form to list a new property.', 'info');
+    setEditingProperty(null);
+    setShowPropertyForm(true);
+  };
+
+  const handleEditProperty = (property: Property) => {
+    setEditingProperty(property);
+    setShowPropertyForm(true);
+  };
+
+  const handleDeleteProperty = async (id: string) => {
+    if (!window.confirm('Are you sure you want to delete this property? This action cannot be undone.')) {
+      return;
+    }
+
+    try {
+      const response = await fetch(`${API_URL}/api/properties/${id}`, {
+        method: 'DELETE',
+      });
+
+      const result = await response.json();
+
+      if (result.success) {
+        showToast('Property deleted successfully!', 'success');
+        fetchData();
+      } else {
+        showToast('Failed to delete property', 'error');
+      }
+    } catch (error) {
+      console.error('Error deleting property:', error);
+      showToast('Error deleting property', 'error');
+    }
+  };
+
+  const handlePropertySubmit = async (propertyData: Partial<Property>) => {
+    try {
+      const url = editingProperty 
+        ? `${API_URL}/api/properties/${editingProperty.id}`
+        : `${API_URL}/api/properties`;
+      
+      const method = editingProperty ? 'PUT' : 'POST';
+
+      // Add owner_id for new properties (should come from auth in production)
+      if (!editingProperty) {
+        propertyData.owner_id = 'a0000000-0000-0000-0000-000000000001'; // Default manager
+      }
+
+      const response = await fetch(url, {
+        method,
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(propertyData),
+      });
+
+      const result = await response.json();
+
+      if (result.success) {
+        showToast(
+          editingProperty ? 'Property updated successfully!' : 'Property created successfully!',
+          'success'
+        );
+        setShowPropertyForm(false);
+        setEditingProperty(null);
+        fetchData();
+      } else {
+        showToast(result.error || 'Failed to save property', 'error');
+      }
+    } catch (error) {
+      console.error('Error saving property:', error);
+      showToast('Error saving property', 'error');
+    }
   };
 
   const getToastColor = (type: string) => {
@@ -381,11 +461,25 @@ function Dashboard() {
                       <span>🚿 {property.bathrooms} bath</span>
                       <span>📐 {property.square_feet} sqft</span>
                     </div>
-                    <div className="flex items-center justify-between">
+                    <div className="flex items-center justify-between mb-4">
                       <span className="text-2xl font-bold text-blue-600">${property.monthly_rent_usdc}/mo</span>
                       <span className={`px-3 py-1 text-xs font-medium rounded ${property.is_active ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800'}`}>
                         {property.is_active ? 'Active' : 'Inactive'}
                       </span>
+                    </div>
+                    <div className="flex items-center space-x-2">
+                      <button
+                        onClick={() => handleEditProperty(property)}
+                        className="flex-1 px-3 py-2 bg-blue-100 text-blue-700 rounded-lg text-sm font-medium hover:bg-blue-200 transition-colors"
+                      >
+                        ✏️ Edit
+                      </button>
+                      <button
+                        onClick={() => handleDeleteProperty(property.id)}
+                        className="flex-1 px-3 py-2 bg-red-100 text-red-700 rounded-lg text-sm font-medium hover:bg-red-200 transition-colors"
+                      >
+                        🗑️ Delete
+                      </button>
                     </div>
                   </div>
                 </div>
@@ -533,6 +627,18 @@ function Dashboard() {
           </div>
         </div>
       </footer>
+
+      {/* Property Form Modal */}
+      {showPropertyForm && (
+        <PropertyForm
+          property={editingProperty}
+          onClose={() => {
+            setShowPropertyForm(false);
+            setEditingProperty(null);
+          }}
+          onSubmit={handlePropertySubmit}
+        />
+      )}
     </div>
   );
 }
