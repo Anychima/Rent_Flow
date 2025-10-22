@@ -14,6 +14,7 @@
     "test:backend": "cd backend && npm test",
     "deploy:contracts": "npx hardhat run scripts/deploy.ts --network arc",
     "deploy:db": "npx ts-node scripts/deploy-db.ts",
+    "seed:db": "npx ts-node scripts/seed-data.ts",
     "verify:env": "npx ts-node scripts/verify-env.ts",
     "lint": "eslint . --ext .ts,.tsx",
     "format": "prettier --write \"**/*.{ts,tsx,sol,json,md}\""
