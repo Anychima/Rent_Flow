@@ -365,7 +365,10 @@ app.get('/api/payments', async (req: Request, res: Response) => {
       .from('rent_payments')
       .select(`
         *,
-        lease:leases(*),
+        lease:leases(
+          *,
+          property:properties(*)
+        ),
         tenant:users(*)
       `)
       .order('payment_date', { ascending: false })
@@ -376,6 +379,274 @@ app.get('/api/payments', async (req: Request, res: Response) => {
     res.json({ success: true, data });
   } catch (error) {
     console.error('Error fetching payments:', error);
+    res.status(500).json({ 
+      success: false, 
+      error: error instanceof Error ? error.message : 'Unknown error' 
+    });
+  }
+});
+
+// Get payment by ID
+app.get('/api/payments/:id', async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    const { data, error } = await supabase
+      .from('rent_payments')
+      .select(`
+        *,
+        lease:leases(
+          *,
+          property:properties(*)
+        ),
+        tenant:users(*)
+      `)
+      .eq('id', id)
+      .single();
+
+    if (error) throw error;
+
+    res.json({ success: true, data });
+  } catch (error) {
+    console.error('Error fetching payment:', error);
+    res.status(500).json({ 
+      success: false, 
+      error: error instanceof Error ? error.message : 'Unknown error' 
+    });
+  }
+});
+
+// Get payments for a specific lease
+app.get('/api/leases/:leaseId/payments', async (req: Request, res: Response) => {
+  try {
+    const { leaseId } = req.params;
+    const { data, error } = await supabase
+      .from('rent_payments')
+      .select('*')
+      .eq('lease_id', leaseId)
+      .order('payment_date', { ascending: false });
+
+    if (error) throw error;
+
+    res.json({ success: true, data });
+  } catch (error) {
+    console.error('Error fetching lease payments:', error);
+    res.status(500).json({ 
+      success: false, 
+      error: error instanceof Error ? error.message : 'Unknown error' 
+    });
+  }
+});
+
+// Create payment (initiate)
+app.post('/api/payments', async (req: Request, res: Response) => {
+  try {
+    const paymentData = req.body;
+    
+    // Validate required fields
+    const required = ['lease_id', 'tenant_id', 'amount_usdc', 'due_date'];
+    const missing = required.filter(field => !paymentData[field]);
+    
+    if (missing.length > 0) {
+      return res.status(400).json({
+        success: false,
+        error: `Missing required fields: ${missing.join(', ')}`
+      });
+    }
+
+    // Set default status and payment date
+    const payment = {
+      ...paymentData,
+      status: paymentData.status || 'pending',
+      payment_date: paymentData.payment_date || new Date().toISOString(),
+      blockchain_network: 'solana',
+    };
+
+    const { data, error } = await supabase
+      .from('rent_payments')
+      .insert([payment])
+      .select(`
+        *,
+        lease:leases(
+          *,
+          property:properties(*)
+        ),
+        tenant:users(*)
+      `)
+      .single();
+
+    if (error) throw error;
+
+    // TODO: Integrate with Circle API for actual USDC transfer
+    // This would involve:
+    // 1. Creating a transfer request to Circle API
+    // 2. Getting transaction signature
+    // 3. Updating payment record with transaction_hash
+
+    res.status(201).json({ success: true, data });
+  } catch (error) {
+    console.error('Error creating payment:', error);
+    res.status(500).json({ 
+      success: false, 
+      error: error instanceof Error ? error.message : 'Unknown error' 
+    });
+  }
+});
+
+// Update payment status
+app.put('/api/payments/:id', async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    const updates = req.body;
+
+    const { data, error } = await supabase
+      .from('rent_payments')
+      .update(updates)
+      .eq('id', id)
+      .select(`
+        *,
+        lease:leases(
+          *,
+          property:properties(*)
+        ),
+        tenant:users(*)
+      `)
+      .single();
+
+    if (error) throw error;
+
+    res.json({ success: true, data });
+  } catch (error) {
+    console.error('Error updating payment:', error);
+    res.status(500).json({ 
+      success: false, 
+      error: error instanceof Error ? error.message : 'Unknown error' 
+    });
+  }
+});
+
+// Mark payment as completed
+app.post('/api/payments/:id/complete', async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    const { transaction_hash } = req.body;
+
+    const { data, error } = await supabase
+      .from('rent_payments')
+      .update({ 
+        status: 'completed',
+        transaction_hash: transaction_hash || `SIMULATED_${Date.now()}`,
+        payment_date: new Date().toISOString()
+      })
+      .eq('id', id)
+      .select(`
+        *,
+        lease:leases(
+          *,
+          property:properties(*)
+        ),
+        tenant:users(*)
+      `)
+      .single();
+
+    if (error) throw error;
+
+    // Update lease total_paid
+    if (data.lease_id) {
+      const { data: lease } = await supabase
+        .from('leases')
+        .select('total_paid_usdc')
+        .eq('id', data.lease_id)
+        .single();
+
+      if (lease) {
+        await supabase
+          .from('leases')
+          .update({ 
+            total_paid_usdc: (lease.total_paid_usdc || 0) + parseFloat(data.amount_usdc),
+            last_payment_date: new Date().toISOString()
+          })
+          .eq('id', data.lease_id);
+      }
+    }
+
+    res.json({ success: true, data, message: 'Payment completed successfully' });
+  } catch (error) {
+    console.error('Error completing payment:', error);
+    res.status(500).json({ 
+      success: false, 
+      error: error instanceof Error ? error.message : 'Unknown error' 
+    });
+  }
+});
+
+// Get pending payments (for a tenant or all)
+app.get('/api/payments/pending', async (req: Request, res: Response) => {
+  try {
+    const { tenant_id } = req.query;
+
+    let query = supabase
+      .from('rent_payments')
+      .select(`
+        *,
+        lease:leases(
+          *,
+          property:properties(*)
+        ),
+        tenant:users(*)
+      `)
+      .eq('status', 'pending');
+
+    if (tenant_id) {
+      query = query.eq('tenant_id', tenant_id);
+    }
+
+    const { data, error } = await query.order('due_date', { ascending: true });
+
+    if (error) throw error;
+
+    res.json({ success: true, data });
+  } catch (error) {
+    console.error('Error fetching pending payments:', error);
+    res.status(500).json({ 
+      success: false, 
+      error: error instanceof Error ? error.message : 'Unknown error' 
+    });
+  }
+});
+
+// Check for overdue payments
+app.get('/api/payments/overdue', async (req: Request, res: Response) => {
+  try {
+    const today = new Date().toISOString().split('T')[0];
+
+    const { data, error } = await supabase
+      .from('rent_payments')
+      .select(`
+        *,
+        lease:leases(
+          *,
+          property:properties(*)
+        ),
+        tenant:users(*)
+      `)
+      .in('status', ['pending', 'late'])
+      .lt('due_date', today)
+      .order('due_date', { ascending: true });
+
+    if (error) throw error;
+
+    // Mark as late if not already
+    const overdueIds = data?.filter(p => p.status === 'pending').map(p => p.id) || [];
+    if (overdueIds.length > 0) {
+      await supabase
+        .from('rent_payments')
+        .update({ status: 'late' })
+        .in('id', overdueIds);
+    }
+
+    res.json({ success: true, data, count: data?.length || 0 });
+  } catch (error) {
+    console.error('Error fetching overdue payments:', error);
     res.status(500).json({ 
       success: false, 
       error: error instanceof Error ? error.message : 'Unknown error' 

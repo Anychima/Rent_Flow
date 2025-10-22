@@ -5,6 +5,7 @@ import Login from './components/Login';
 import Register from './components/Register';
 import PropertyForm from './components/PropertyForm';
 import LeaseForm from './components/LeaseForm';
+import PaymentForm from './components/PaymentForm';
 
 interface Toast {
   id: number;
@@ -55,6 +56,25 @@ interface Lease {
   };
 }
 
+interface Payment {
+  id: string;
+  lease_id: string;
+  tenant_id: string;
+  amount_usdc: number;
+  payment_date: string;
+  due_date: string;
+  status: string;
+  transaction_hash?: string;
+  notes?: string;
+  lease: {
+    property: Property;
+  };
+  tenant: {
+    full_name: string;
+    email: string;
+  };
+}
+
 interface MaintenanceRequest {
   id: string;
   title: string;
@@ -78,6 +98,7 @@ function Dashboard() {
   const [properties, setProperties] = useState<Property[]>([]);
   const [leases, setLeases] = useState<Lease[]>([]);
   const [maintenance, setMaintenance] = useState<MaintenanceRequest[]>([]);
+  const [payments, setPayments] = useState<Payment[]>([]);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState('dashboard');
   const [toasts, setToasts] = useState<Toast[]>([]);
@@ -87,6 +108,8 @@ function Dashboard() {
   const [editingProperty, setEditingProperty] = useState<Property | null>(null);
   const [showLeaseForm, setShowLeaseForm] = useState(false);
   const [editingLease, setEditingLease] = useState<Lease | null>(null);
+  const [showPaymentForm, setShowPaymentForm] = useState(false);
+  const [editingPayment, setEditingPayment] = useState<Payment | null>(null);
 
   useEffect(() => {
     fetchData();
@@ -273,6 +296,73 @@ function Dashboard() {
     }
   };
 
+  const handleAddPayment = () => {
+    setEditingPayment(null);
+    setShowPaymentForm(true);
+  };
+
+  const handlePaymentSubmit = async (paymentData: Partial<Payment>) => {
+    try {
+      const url = editingPayment 
+        ? `${API_URL}/api/payments/${editingPayment.id}`
+        : `${API_URL}/api/payments`;
+      
+      const method = editingPayment ? 'PUT' : 'POST';
+
+      const response = await fetch(url, {
+        method,
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(paymentData),
+      });
+
+      const result = await response.json();
+
+      if (result.success) {
+        showToast(
+          editingPayment ? 'Payment updated successfully!' : 'Payment recorded successfully!',
+          'success'
+        );
+        setShowPaymentForm(false);
+        setEditingPayment(null);
+        fetchData();
+      } else {
+        showToast(result.error || 'Failed to save payment', 'error');
+      }
+    } catch (error) {
+      console.error('Error saving payment:', error);
+      showToast('Error saving payment', 'error');
+    }
+  };
+
+  const handleCompletePayment = async (id: string) => {
+    if (!window.confirm('Mark this payment as completed?')) {
+      return;
+    }
+
+    try {
+      const response = await fetch(`${API_URL}/api/payments/${id}/complete`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      });
+
+      const result = await response.json();
+
+      if (result.success) {
+        showToast('Payment marked as completed!', 'success');
+        fetchData();
+      } else {
+        showToast('Failed to complete payment', 'error');
+      }
+    } catch (error) {
+      console.error('Error completing payment:', error);
+      showToast('Error completing payment', 'error');
+    }
+  };
+
   const getToastColor = (type: string) => {
     switch (type) {
       case 'success': return 'bg-green-500';
@@ -296,24 +386,27 @@ function Dashboard() {
   const fetchData = async () => {
     try {
       setLoading(true);
-      const [statsRes, propsRes, leasesRes, maintenanceRes] = await Promise.all([
+      const [statsRes, propsRes, leasesRes, maintenanceRes, paymentsRes] = await Promise.all([
         fetch(`${API_URL}/api/dashboard/stats`),
         fetch(`${API_URL}/api/properties`),
         fetch(`${API_URL}/api/leases`),
-        fetch(`${API_URL}/api/maintenance`)
+        fetch(`${API_URL}/api/maintenance`),
+        fetch(`${API_URL}/api/payments`)
       ]);
 
-      const [statsData, propsData, leasesData, maintenanceData] = await Promise.all([
+      const [statsData, propsData, leasesData, maintenanceData, paymentsData] = await Promise.all([
         statsRes.json(),
         propsRes.json(),
         leasesRes.json(),
-        maintenanceRes.json()
+        maintenanceRes.json(),
+        paymentsRes.json()
       ]);
 
       if (statsData.success) setStats(statsData.data);
       if (propsData.success) setProperties(propsData.data || []);
       if (leasesData.success) setLeases(leasesData.data || []);
       if (maintenanceData.success) setMaintenance(maintenanceData.data || []);
+      if (paymentsData.success) setPayments(paymentsData.data || []);
     } catch (error) {
       console.error('Error fetching data:', error);
     } finally {
@@ -400,7 +493,7 @@ function Dashboard() {
       <nav className="bg-white border-b">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex space-x-8">
-            {['dashboard', 'properties', 'leases', 'maintenance'].map((tab) => (
+            {['dashboard', 'properties', 'leases', 'payments', 'maintenance'].map((tab) => (
               <button
                 key={tab}
                 onClick={() => setActiveTab(tab)}
@@ -666,6 +759,88 @@ function Dashboard() {
           </div>
         )}
 
+        {activeTab === 'payments' && (
+          <div>
+            <div className="flex justify-between items-center mb-6">
+              <h2 className="text-2xl font-bold text-gray-900">Payments</h2>
+              <button
+                onClick={handleAddPayment}
+                className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+              >
+                + Record Payment
+              </button>
+            </div>
+            <div className="bg-white shadow rounded-lg overflow-hidden">
+              <table className="min-w-full divide-y divide-gray-200">
+                <thead className="bg-gray-50">
+                  <tr>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Property</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Tenant</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Amount</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Due Date</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
+                  </tr>
+                </thead>
+                <tbody className="bg-white divide-y divide-gray-200">
+                  {payments.map((payment) => (
+                    <tr key={payment.id} className="hover:bg-gray-50">
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        <div className="text-sm font-medium text-gray-900">{payment.lease?.property?.title || 'N/A'}</div>
+                        <div className="text-sm text-gray-500">{payment.lease?.property?.city || 'N/A'}</div>
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        <div className="text-sm text-gray-900">{payment.tenant?.full_name || 'N/A'}</div>
+                        <div className="text-sm text-gray-500">{payment.tenant?.email || 'N/A'}</div>
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        <div className="text-sm font-medium text-gray-900">${payment.amount_usdc} USDC</div>
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        <div className="text-sm text-gray-900">{payment.due_date}</div>
+                        {payment.transaction_hash && (
+                          <div className="text-xs text-gray-500 truncate max-w-[100px]" title={payment.transaction_hash}>
+                            {payment.transaction_hash.substring(0, 12)}...
+                          </div>
+                        )}
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        <span className={`px-2 py-1 text-xs font-medium rounded ${getStatusColor(payment.status)}`}>
+                          {payment.status}
+                        </span>
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm">
+                        <div className="flex items-center space-x-2">
+                          {payment.status === 'pending' && (
+                            <button
+                              onClick={() => handleCompletePayment(payment.id)}
+                              className="px-2 py-1 bg-green-100 text-green-700 rounded hover:bg-green-200 text-xs"
+                              title="Mark as completed"
+                            >
+                              ✓ Complete
+                            </button>
+                          )}
+                          {payment.transaction_hash && (
+                            <a
+                              href={`https://explorer.solana.com/tx/${payment.transaction_hash}?cluster=devnet`}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="text-blue-600 hover:text-blue-900"
+                              title="View on Solana Explorer"
+                            >
+                              🔗
+                            </a>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
+
         {activeTab === 'maintenance' && (
           <div>
             <div className="flex justify-between items-center mb-6">
@@ -784,6 +959,18 @@ function Dashboard() {
             setEditingLease(null);
           }}
           onSubmit={handleLeaseSubmit}
+        />
+      )}
+
+      {/* Payment Form Modal */}
+      {showPaymentForm && (
+        <PaymentForm
+          payment={editingPayment}
+          onClose={() => {
+            setShowPaymentForm(false);
+            setEditingPayment(null);
+          }}
+          onSubmit={handlePaymentSubmit}
         />
       )}
     </div>
