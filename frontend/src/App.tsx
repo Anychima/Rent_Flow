@@ -6,6 +6,10 @@ import Register from './components/Register';
 import PropertyForm from './components/PropertyForm';
 import LeaseForm from './components/LeaseForm';
 import PaymentForm from './components/PaymentForm';
+import PaymentAnalytics from './components/PaymentAnalytics';
+import MaintenanceForm from './components/MaintenanceForm';
+import TenantPortal from './components/TenantPortal';
+import VoiceNotifications from './components/VoiceNotifications';
 
 interface Toast {
   id: number;
@@ -77,12 +81,22 @@ interface Payment {
 
 interface MaintenanceRequest {
   id: string;
+  property_id: string;
+  requestor_id: string;
   title: string;
+  description: string;
   category: string;
   priority: string;
   status: string;
   estimated_cost_usdc: number;
+  actual_cost_usdc?: number;
+  assigned_to?: string;
+  notes?: string;
   property: Property;
+  requestor: {
+    full_name: string;
+    email: string;
+  };
 }
 
 const API_URL = process.env.REACT_APP_BACKEND_URL || 'http://localhost:3001';
@@ -110,6 +124,9 @@ function Dashboard() {
   const [editingLease, setEditingLease] = useState<Lease | null>(null);
   const [showPaymentForm, setShowPaymentForm] = useState(false);
   const [editingPayment, setEditingPayment] = useState<Payment | null>(null);
+  const [showMaintenanceForm, setShowMaintenanceForm] = useState(false);
+  const [editingMaintenance, setEditingMaintenance] = useState<MaintenanceRequest | null>(null);
+  const [showTenantPortal, setShowTenantPortal] = useState(false);
 
   useEffect(() => {
     fetchData();
@@ -363,6 +380,124 @@ function Dashboard() {
     }
   };
 
+  // Maintenance handlers
+  const handleAddMaintenance = () => {
+    setEditingMaintenance(null);
+    setShowMaintenanceForm(true);
+  };
+
+  const handleEditMaintenance = (maintenance: MaintenanceRequest) => {
+    setEditingMaintenance(maintenance);
+    setShowMaintenanceForm(true);
+  };
+
+  const handleMaintenanceSubmit = async (maintenanceData: Partial<MaintenanceRequest>) => {
+    try {
+      const url = editingMaintenance 
+        ? `${API_URL}/api/maintenance/${editingMaintenance.id}`
+        : `${API_URL}/api/maintenance`;
+      
+      const method = editingMaintenance ? 'PUT' : 'POST';
+
+      const response = await fetch(url, {
+        method,
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(maintenanceData),
+      });
+
+      const result = await response.json();
+
+      if (result.success) {
+        showToast(
+          editingMaintenance ? 'Maintenance request updated!' : 'Maintenance request created!',
+          'success'
+        );
+        setShowMaintenanceForm(false);
+        setEditingMaintenance(null);
+        fetchData();
+      } else {
+        showToast(result.error || 'Failed to save maintenance request', 'error');
+      }
+    } catch (error) {
+      console.error('Error saving maintenance request:', error);
+      showToast('Error saving maintenance request', 'error');
+    }
+  };
+
+  const handleUpdateMaintenanceStatus = async (id: string, status: string) => {
+    try {
+      const response = await fetch(`${API_URL}/api/maintenance/${id}/status`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ status }),
+      });
+
+      const result = await response.json();
+
+      if (result.success) {
+        showToast(`Status updated to ${status}!`, 'success');
+        fetchData();
+      } else {
+        showToast('Failed to update status', 'error');
+      }
+    } catch (error) {
+      console.error('Error updating status:', error);
+      showToast('Error updating status', 'error');
+    }
+  };
+
+  const handleCompleteMaintenance = async (id: string, actualCost: number) => {
+    try {
+      const response = await fetch(`${API_URL}/api/maintenance/${id}/complete`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ actual_cost_usdc: actualCost }),
+      });
+
+      const result = await response.json();
+
+      if (result.success) {
+        showToast('Maintenance request completed!', 'success');
+        fetchData();
+      } else {
+        showToast('Failed to complete request', 'error');
+      }
+    } catch (error) {
+      console.error('Error completing maintenance:', error);
+      showToast('Error completing maintenance', 'error');
+    }
+  };
+
+  const handleDeleteMaintenance = async (id: string) => {
+    if (!window.confirm('Are you sure you want to delete this maintenance request?')) {
+      return;
+    }
+
+    try {
+      const response = await fetch(`${API_URL}/api/maintenance/${id}`, {
+        method: 'DELETE',
+      });
+
+      const result = await response.json();
+
+      if (result.success) {
+        showToast('Maintenance request deleted!', 'success');
+        fetchData();
+      } else {
+        showToast('Failed to delete request', 'error');
+      }
+    } catch (error) {
+      console.error('Error deleting maintenance:', error);
+      showToast('Error deleting maintenance', 'error');
+    }
+  };
+
   const getToastColor = (type: string) => {
     switch (type) {
       case 'success': return 'bg-green-500';
@@ -465,6 +600,13 @@ function Dashboard() {
                 <span className="text-sm text-gray-700">{user?.email}</span>
               </div>
               <button
+                onClick={() => setShowTenantPortal(true)}
+                className="px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm font-medium hover:bg-indigo-700 transition-colors"
+                title="Access Tenant Portal"
+              >
+                🏠 Tenant Portal
+              </button>
+              <button
                 onClick={signOut}
                 className="px-3 py-1 bg-red-100 text-red-700 rounded-lg text-sm font-medium hover:bg-red-200 transition-colors"
                 title="Sign out"
@@ -493,7 +635,7 @@ function Dashboard() {
       <nav className="bg-white border-b">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex space-x-8">
-            {['dashboard', 'properties', 'leases', 'payments', 'maintenance'].map((tab) => (
+            {['dashboard', 'properties', 'leases', 'payments', 'analytics', 'maintenance', 'notifications'].map((tab) => (
               <button
                 key={tab}
                 onClick={() => setActiveTab(tab)}
@@ -841,6 +983,8 @@ function Dashboard() {
           </div>
         )}
 
+        {activeTab === 'analytics' && <PaymentAnalytics />}
+
         {activeTab === 'maintenance' && (
           <div>
             <div className="flex justify-between items-center mb-6">
@@ -868,6 +1012,12 @@ function Dashboard() {
                   </select>
                 </div>
               </div>
+              <button
+                onClick={handleAddMaintenance}
+                className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+              >
+                + New Request
+              </button>
             </div>
             {filteredMaintenance.length === 0 ? (
               <div className="text-center py-12 bg-white rounded-lg shadow">
@@ -877,7 +1027,7 @@ function Dashboard() {
             ) : (
               <div className="space-y-4">
                 {filteredMaintenance.map((req) => (
-                <div key={req.id} className="bg-white shadow rounded-lg p-6">
+                <div key={req.id} className="bg-white shadow rounded-lg p-6 hover:shadow-lg transition-shadow">
                   <div className="flex items-start justify-between">
                     <div className="flex-1">
                       <div className="flex items-center space-x-3 mb-2">
@@ -886,15 +1036,86 @@ function Dashboard() {
                           {req.priority}
                         </span>
                         <span className={`px-2 py-1 text-xs font-medium rounded ${getStatusColor(req.status)}`}>
-                          {req.status}
+                          {req.status.replace('_', ' ')}
                         </span>
                       </div>
                       <p className="text-sm text-gray-600 mb-2">{req.property?.title || 'Unknown Property'}</p>
-                      <p className="text-sm text-gray-500">Category: {req.category}</p>
+                      <p className="text-sm text-gray-500 mb-2">Category: <span className="capitalize">{req.category.replace('_', ' ')}</span></p>
+                      {req.description && (
+                        <p className="text-sm text-gray-600 mt-2">{req.description}</p>
+                      )}
+                      {req.assigned_to && (
+                        <p className="text-sm text-blue-600 mt-2">
+                          👷 Assigned to: {req.assigned_to}
+                        </p>
+                      )}
                     </div>
-                    <div className="text-right">
+                    <div className="text-right ml-4">
                       <div className="text-2xl font-bold text-gray-900">${req.estimated_cost_usdc}</div>
                       <div className="text-sm text-gray-500">Estimated</div>
+                      {req.actual_cost_usdc !== undefined && req.actual_cost_usdc > 0 && (
+                        <div className="mt-2">
+                          <div className="text-lg font-semibold text-green-700">${req.actual_cost_usdc}</div>
+                          <div className="text-xs text-green-600">Actual</div>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                  
+                  {/* Action Buttons */}
+                  <div className="mt-4 pt-4 border-t flex items-center justify-between">
+                    <div className="flex items-center space-x-2">
+                      {req.status === 'pending' && (
+                        <>
+                          <button
+                            onClick={() => handleUpdateMaintenanceStatus(req.id, 'approved')}
+                            className="px-3 py-1 bg-green-100 text-green-700 rounded text-sm hover:bg-green-200"
+                          >
+                            ✓ Approve
+                          </button>
+                          <button
+                            onClick={() => handleUpdateMaintenanceStatus(req.id, 'rejected')}
+                            className="px-3 py-1 bg-red-100 text-red-700 rounded text-sm hover:bg-red-200"
+                          >
+                            ✕ Reject
+                          </button>
+                        </>
+                      )}
+                      {req.status === 'approved' && (
+                        <button
+                          onClick={() => handleUpdateMaintenanceStatus(req.id, 'in_progress')}
+                          className="px-3 py-1 bg-blue-100 text-blue-700 rounded text-sm hover:bg-blue-200"
+                        >
+                          🛠️ Start Work
+                        </button>
+                      )}
+                      {req.status === 'in_progress' && (
+                        <button
+                          onClick={() => {
+                            const cost = prompt('Enter actual cost (USDC):', req.estimated_cost_usdc?.toString());
+                            if (cost) handleCompleteMaintenance(req.id, parseFloat(cost));
+                          }}
+                          className="px-3 py-1 bg-purple-100 text-purple-700 rounded text-sm hover:bg-purple-200"
+                        >
+                          ✔️ Complete
+                        </button>
+                      )}
+                    </div>
+                    <div className="flex items-center space-x-2">
+                      <button
+                        onClick={() => handleEditMaintenance(req)}
+                        className="text-blue-600 hover:text-blue-900 text-sm"
+                        title="Edit"
+                      >
+                        ✏️ Edit
+                      </button>
+                      <button
+                        onClick={() => handleDeleteMaintenance(req.id)}
+                        className="text-red-600 hover:text-red-900 text-sm"
+                        title="Delete"
+                      >
+                        🗑️ Delete
+                      </button>
                     </div>
                   </div>
                 </div>
@@ -902,6 +1123,10 @@ function Dashboard() {
               </div>
             )}
           </div>
+        )}
+
+        {activeTab === 'notifications' && (
+          <VoiceNotifications userId={user?.id} />
         )}
       </main>
 
@@ -972,6 +1197,23 @@ function Dashboard() {
           }}
           onSubmit={handlePaymentSubmit}
         />
+      )}
+
+      {/* Maintenance Form Modal */}
+      {showMaintenanceForm && (
+        <MaintenanceForm
+          maintenance={editingMaintenance}
+          onClose={() => {
+            setShowMaintenanceForm(false);
+            setEditingMaintenance(null);
+          }}
+          onSubmit={handleMaintenanceSubmit}
+        />
+      )}
+
+      {/* Tenant Portal */}
+      {showTenantPortal && (
+        <TenantPortal onBack={() => setShowTenantPortal(false)} />
       )}
     </div>
   );
