@@ -143,7 +143,17 @@ export default function Login({ onToggleMode }: LoginProps) {
         <div className="mt-6 p-4 bg-blue-50 border border-blue-200 rounded-lg">
           <p className="text-xs font-medium text-blue-900 mb-2">🔐 Demo Credentials:</p>
           <p className="text-xs text-blue-700">Email: manager@rentflow.ai</p>
-          <p className="text-xs text-blue-700">Password: (Setup required)</p>
+          <p className="text-xs text-blue-700">Password: RentFlow2024!</p>
+          <button
+            type="button"
+            onClick={() => {
+              setEmail('manager@rentflow.ai');
+              setPassword('RentFlow2024!');
+            }}
+            className="mt-2 text-xs text-blue-600 hover:text-blue-800 font-medium"
+          >
+            Click to fill credentials
+          </button>
         </div>
       </div>
     </div>

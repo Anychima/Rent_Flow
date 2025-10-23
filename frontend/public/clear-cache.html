@@ -1,0 +1,227 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>RentFlow - Clear Cache & Reload</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+        .container {
+            background: white;
+            padding: 40px;
+            border-radius: 16px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+            max-width: 500px;
+            width: 100%;
+            text-align: center;
+        }
+        h1 {
+            color: #667eea;
+            margin-bottom: 20px;
+            font-size: 28px;
+        }
+        p {
+            color: #666;
+            margin-bottom: 30px;
+            line-height: 1.6;
+        }
+        .btn {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            padding: 15px 30px;
+            border-radius: 8px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: transform 0.2s, box-shadow 0.2s;
+            margin: 10px;
+        }
+        .btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 20px rgba(102, 126, 234, 0.4);
+        }
+        .btn:active {
+            transform: translateY(0);
+        }
+        .status {
+            margin-top: 20px;
+            padding: 15px;
+            border-radius: 8px;
+            font-weight: 500;
+            display: none;
+        }
+        .status.success {
+            background: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+            display: block;
+        }
+        .status.info {
+            background: #d1ecf1;
+            color: #0c5460;
+            border: 1px solid #bee5eb;
+            display: block;
+        }
+        .diagnostic {
+            margin-top: 30px;
+            padding: 20px;
+            background: #f8f9fa;
+            border-radius: 8px;
+            text-align: left;
+            font-size: 14px;
+        }
+        .diagnostic h3 {
+            margin-bottom: 10px;
+            color: #333;
+        }
+        .diagnostic ul {
+            list-style: none;
+            padding-left: 0;
+        }
+        .diagnostic li {
+            padding: 5px 0;
+            color: #666;
+        }
+        .diagnostic li::before {
+            content: "✓ ";
+            color: #28a745;
+            font-weight: bold;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🏠 RentFlow AI</h1>
+        <p>If you're experiencing connection issues, click the button below to clear your browser cache and reload the application.</p>
+        
+        <button class="btn" onclick="clearAllCache()">🔄 Clear Cache & Reload</button>
+        <button class="btn" onclick="window.location.href='/'">🏡 Go to Home</button>
+        
+        <div id="status" class="status"></div>
+        
+        <div class="diagnostic">
+            <h3>Server Status:</h3>
+            <ul id="diagnosticList">
+                <li>Checking servers...</li>
+            </ul>
+        </div>
+    </div>
+
+    <script>
+        // Run diagnostics on page load
+        window.addEventListener('load', runDiagnostics);
+
+        async function runDiagnostics() {
+            const diagnosticList = document.getElementById('diagnosticList');
+            diagnosticList.innerHTML = '';
+
+            // Check frontend server
+            try {
+                const frontendCheck = await fetch('http://localhost:3000');
+                addDiagnostic('Frontend server (port 3000) is running ✅', true);
+            } catch (e) {
+                addDiagnostic('Frontend server (port 3000) is NOT responding ❌', false);
+            }
+
+            // Check backend server
+            try {
+                const backendCheck = await fetch('http://localhost:3001/api/properties/public');
+                if (backendCheck.ok) {
+                    addDiagnostic('Backend server (port 3001) is running ✅', true);
+                } else {
+                    addDiagnostic('Backend server (port 3001) responded with error', false);
+                }
+            } catch (e) {
+                addDiagnostic('Backend server (port 3001) is NOT responding ❌', false);
+            }
+
+            // Check localStorage
+            try {
+                const localStorageTest = localStorage.getItem('test');
+                addDiagnostic('localStorage is accessible ✅', true);
+            } catch (e) {
+                addDiagnostic('localStorage is blocked or corrupted ⚠️', false);
+            }
+
+            // Check browser info
+            addDiagnostic(`Browser: ${navigator.userAgent.split(' ').slice(-1)[0]}`, true);
+        }
+
+        function addDiagnostic(message, isGood) {
+            const diagnosticList = document.getElementById('diagnosticList');
+            const li = document.createElement('li');
+            li.textContent = message;
+            if (!isGood) {
+                li.style.color = '#dc3545';
+                li.style.setProperty('--before-content', '✗ ');
+            }
+            diagnosticList.appendChild(li);
+        }
+
+        function clearAllCache() {
+            const statusEl = document.getElementById('status');
+            
+            try {
+                // Clear localStorage
+                localStorage.clear();
+                
+                // Clear sessionStorage
+                sessionStorage.clear();
+                
+                // Clear cookies
+                document.cookie.split(";").forEach(function(c) { 
+                    document.cookie = c.replace(/^ +/, "").replace(/=.*/, "=;expires=" + new Date().toUTCString() + ";path=/"); 
+                });
+                
+                // Clear IndexedDB
+                if (window.indexedDB) {
+                    indexedDB.databases().then(databases => {
+                        databases.forEach(db => {
+                            if (db.name) {
+                                indexedDB.deleteDatabase(db.name);
+                            }
+                        });
+                    }).catch(() => {
+                        console.log('Could not clear IndexedDB');
+                    });
+                }
+                
+                statusEl.className = 'status success';
+                statusEl.textContent = '✅ Cache cleared successfully! Reloading in 2 seconds...';
+                
+                // Hard reload after 2 seconds
+                setTimeout(() => {
+                    window.location.href = '/?nocache=' + new Date().getTime();
+                    window.location.reload(true);
+                }, 2000);
+                
+            } catch (error) {
+                statusEl.className = 'status info';
+                statusEl.textContent = '⚠️ Partial clear. Please manually clear cache: Ctrl+Shift+Delete';
+            }
+        }
+
+        // Check if we just cleared cache
+        const urlParams = new URLSearchParams(window.location.search);
+        if (urlParams.has('nocache')) {
+            const statusEl = document.getElementById('status');
+            statusEl.className = 'status success';
+            statusEl.textContent = '✅ Cache cleared! You can now use the application.';
+        }
+    </script>
+</body>
+</html>

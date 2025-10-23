@@ -90,12 +90,25 @@ export default function PaymentForm({ payment, onClose, onSubmit }: PaymentFormP
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    
+    // Validate amount
+    if (!formData.amount_usdc || formData.amount_usdc <= 0) {
+      alert('Please enter a valid payment amount greater than $0');
+      return;
+    }
+
+    if (!formData.lease_id) {
+      alert('Please select a lease');
+      return;
+    }
+
     setLoading(true);
     try {
       await onSubmit(formData);
       onClose();
     } catch (error) {
       console.error('Error submitting payment:', error);
+      alert('Failed to submit payment. Please try again.');
     } finally {
       setLoading(false);
     }
@@ -169,12 +182,13 @@ export default function PaymentForm({ payment, onClose, onSubmit }: PaymentFormP
                     type="number"
                     name="amount_usdc"
                     required
-                    min="0"
+                    min="0.01"
                     step="0.01"
                     value={formData.amount_usdc}
                     onChange={handleChange}
                     className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                   />
+                  <p className="mt-1 text-xs text-gray-500">Minimum amount: $0.01 USDC</p>
                 </div>
 
                 <div>

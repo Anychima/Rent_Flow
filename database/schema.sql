@@ -77,6 +77,20 @@ CREATE TABLE IF NOT EXISTS rent_payments (
     blockchain_network TEXT DEFAULT 'solana',
     late_fee_usdc DECIMAL(20,6) DEFAULT 0,
     notes TEXT,
+    payment_type TEXT DEFAULT 'rent' CHECK (payment_type IN ('rent', 'security_deposit', 'late_fee', 'other')),
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+-- Micropayments Table (for content creator features)
+CREATE TABLE IF NOT EXISTS micropayments (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    from_user_id UUID REFERENCES users(id),
+    to_user_id UUID REFERENCES users(id),
+    amount_usdc DECIMAL(20,6) NOT NULL,
+    purpose TEXT NOT NULL,
+    transaction_hash TEXT,
+    status TEXT DEFAULT 'completed' CHECK (status IN ('pending', 'completed', 'failed')),
+    blockchain_network TEXT DEFAULT 'solana',
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
@@ -173,6 +187,8 @@ CREATE INDEX idx_leases_tenant ON leases(tenant_id);
 CREATE INDEX idx_leases_status ON leases(status);
 CREATE INDEX idx_rent_payments_lease ON rent_payments(lease_id);
 CREATE INDEX idx_rent_payments_due_date ON rent_payments(due_date);
+CREATE INDEX idx_micropayments_from_user ON micropayments(from_user_id);
+CREATE INDEX idx_micropayments_to_user ON micropayments(to_user_id);
 CREATE INDEX idx_maintenance_property ON maintenance_requests(property_id);
 CREATE INDEX idx_maintenance_status ON maintenance_requests(status);
 CREATE INDEX idx_messages_sender ON messages(sender_id);
@@ -199,49 +215,5 @@ CREATE TRIGGER update_properties_updated_at BEFORE UPDATE ON properties
 CREATE TRIGGER update_leases_updated_at BEFORE UPDATE ON leases
     FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
-CREATE TRIGGER update_maintenance_updated_at BEFORE UPDATE ON maintenance_requests
+CREATE TRIGGER update_maintenance_requests_updated_at BEFORE UPDATE ON maintenance_requests
     FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
-
--- Enable Row Level Security (RLS)
-ALTER TABLE users ENABLE ROW LEVEL SECURITY;
-ALTER TABLE properties ENABLE ROW LEVEL SECURITY;
-ALTER TABLE leases ENABLE ROW LEVEL SECURITY;
-ALTER TABLE rent_payments ENABLE ROW LEVEL SECURITY;
-ALTER TABLE maintenance_requests ENABLE ROW LEVEL SECURITY;
-ALTER TABLE messages ENABLE ROW LEVEL SECURITY;
-
--- RLS Policies (Basic - customize based on your needs)
-
--- Users can read their own data
-CREATE POLICY "Users can view own data" ON users
-    FOR SELECT USING (auth.uid()::text = id::text);
-
--- Property owners can manage their properties
-CREATE POLICY "Owners can manage properties" ON properties
-    FOR ALL USING (auth.uid()::text = owner_id::text);
-
--- Allow public read of active properties (for browsing)
-CREATE POLICY "Public can view active properties" ON properties
-    FOR SELECT USING (is_active = true);
-
--- Tenants and owners can view their leases
-CREATE POLICY "Users can view their leases" ON leases
-    FOR SELECT USING (
-        auth.uid()::text = tenant_id::text OR
-        auth.uid()::text IN (SELECT owner_id::text FROM properties WHERE id = property_id)
-    );
-
--- Users can view their payment history
-CREATE POLICY "Users can view payments" ON rent_payments
-    FOR SELECT USING (auth.uid()::text = tenant_id::text);
-
--- Comments for documentation
-COMMENT ON TABLE users IS 'User accounts for property managers, tenants, and AI agents';
-COMMENT ON TABLE properties IS 'Property listings with blockchain sync';
-COMMENT ON TABLE leases IS 'Rental agreements with on-chain and off-chain metadata';
-COMMENT ON TABLE rent_payments IS 'USDC rent payment records';
-COMMENT ON TABLE maintenance_requests IS 'Maintenance requests with AI analysis';
-COMMENT ON TABLE messages IS 'Communication between users with AI support';
-COMMENT ON TABLE ai_analysis_cache IS 'Cached AI analysis results';
-COMMENT ON TABLE voice_notifications IS 'ElevenLabs voice notification records';
-COMMENT ON TABLE blockchain_sync_log IS 'Solana blockchain synchronization logs';

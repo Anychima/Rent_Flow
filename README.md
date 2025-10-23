@@ -1,6 +1,6 @@
 # 🏠 RentFlow AI
 
-> AI-Powered Property Management System on Solana Devnet with USDC Payments
+> AI-Powered Property Management System on Arc with USDC Payments
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Solidity](https://img.shields.io/badge/Solidity-0.8.20-blue)](https://soliditylang.org/)
@@ -10,19 +10,24 @@
 
 **Built for the AI Agents on Arc with USDC Hackathon**
 
-RentFlow AI is a comprehensive blockchain-based property management platform that leverages AI agents, smart contracts, and USDC payments to automate and streamline rental property operations on the Solana Devnet.
+RentFlow AI is a comprehensive blockchain-based property management platform that leverages AI agents, smart contracts, and USDC payments to automate and streamline rental property operations on the Arc blockchain.
 
 ---
 
 ## ✨ Features
 
 - 🤖 **AI-Powered Agents**: Automated property management with OpenAI and ElevenLabs integration
-- ⛓️ **Smart Contracts**: Secure rental agreements and payment processing on Solana blockchain
-- 💰 **USDC Payments**: Stablecoin-based rent collection and deposit management
+- ⛓️ **Smart Contracts**: Secure rental agreements and payment processing on Arc blockchain
+- 💰 **USDC Payments**: Stablecoin-based rent collection and deposit management with gasless transactions
+- 🌉 **Cross-Chain Capabilities**: CCTP integration for multi-chain property portfolios
 - 🏦 **Supabase Integration**: Real-time database with Row Level Security (RLS)
 - 📊 **Property Dashboard**: Comprehensive analytics and management interface
 - 🔒 **Secure Authentication**: Multi-tenant architecture with role-based access control
 - 📱 **Responsive UI**: Modern React frontend with Tailwind CSS
+- 🌐 **Public Property Browsing**: Non-logged-in users can browse available properties
+- 🔄 **Automated Systems**: AI analysis, voice notifications, payment scheduling, and blockchain sync
+- 🧠 **AI Decision Making**: Autonomous payment processing and predictive maintenance scheduling
+- 💸 **Micropayments**: Content creator features with small USDC transfers (limited to $1)
 
 ---
 
@@ -34,7 +39,7 @@ RentFlow AI is a comprehensive blockchain-based property management platform tha
 - npm >= 9.0.0
 - Git
 - PostgreSQL (via Supabase)
-- Solana CLI (optional, for wallet management)
+- Arc Wallet Configuration
 
 ### Installation
 
@@ -62,7 +67,7 @@ You'll need the following API keys and configurations:
 - **OpenAI**: API key for AI agent functionality
 - **ElevenLabs**: API key for voice/audio features
 - **Circle API**: For USDC payment processing
-- **Solana Wallet**: Deployer and agent wallet addresses (Devnet)
+- **Arc Wallet**: Deployer and agent wallet addresses
 
 See [ENVIRONMENT_SETUP.md](./ENVIRONMENT_SETUP.md) for detailed configuration instructions.
 
@@ -72,21 +77,67 @@ See [ENVIRONMENT_SETUP.md](./ENVIRONMENT_SETUP.md) for detailed configuration in
 # Verify environment configuration
 npm run verify:env
 
+# Set up demo user account (first time only)
+npm run setup:demo
+
 # Start backend and frontend concurrently
 npm run dev
 
 # Frontend: http://localhost:3000
-# Backend: http://localhost:5000
+# Backend: http://localhost:3001
 ```
+
+### 🔐 Demo Credentials
+
+After running `npm run setup:demo`, you can login with:
+
+**Manager Account:**
+- Email: `manager@rentflow.ai`
+- Password: `RentFlow2024!`
+
+**Tenant Accounts** (created via seed data):
+- Email: `tenant1@example.com` (password setup required)
+- Email: `tenant2@example.com` (password setup required)
+
+💡 **Note**: The setup script creates the manager account automatically. For production, change these credentials immediately.
+
+### 🔄 Automated Systems Setup
+
+RentFlow AI includes several automated systems that can be set up individually or all at once:
+
+```bash
+# Set up all automation systems at once
+npm run setup:all-automation
+
+# Or set up individual systems:
+npm run setup:ai-analysis          # AI analysis for maintenance requests
+npm run setup:voice-notifications  # Voice notifications system
+npm run setup:payment-scheduler    # Payment generation and tracking
+npm run setup:blockchain-logging   # Blockchain event synchronization
+```
+
+### 🚀 Arc-Specific Features - FULLY IMPLEMENTED
+
+RentFlow AI now fully supports Arc blockchain with all hackathon requirements implemented:
+
+1. **Gasless Transactions**: USDC as native gas enables gasless transactions for small payments
+2. **Cross-Chain Payments**: CCTP integration for multi-chain property portfolios
+3. **AI Agent Autonomy**: Automated decision-making for payments and maintenance
+4. **Micropayments**: Content creator features with small USDC transfers (limited to $1)
+
+All Arc features are ready to use. To enable Arc features, set `BLOCKCHAIN_NETWORK=arc` in your environment variables.
 
 ### Deployment
 
 ```bash
-# Deploy smart contracts to Solana Devnet
+# Deploy smart contracts to Arc
 npm run deploy:contracts
 
 # Deploy database schema to Supabase
 npm run deploy:db
+
+# Run database migrations
+npm run migrate:db
 
 # Run all tests
 npm test
@@ -104,6 +155,8 @@ npm test
 - 🧪 [Testing Guide](./TESTING_GUIDE.md)
 - ✅ [Configuration Complete](./CONFIGURATION_COMPLETE.md)
 - 🚢 [Deployment Status](./DEPLOYMENT_STATUS.md)
+- 📋 [Implementation Roadmap](./IMPLEMENTATION_ROADMAP.md)
+- 📄 [Arc Enhancements](./ARC_ENHANCEMENTS.md)
 
 ---
 
@@ -139,9 +192,14 @@ Rent_Flow/
 │   └── fix-rls-policies.sql # RLS policy fixes
 │
 ├── 📁 scripts/               # Deployment & Utility Scripts
-│   ├── deploy.ts            # Smart contract deployment
+│   ├── deploy-contracts.ts  # Smart contract deployment
 │   ├── deploy-db.ts         # Database deployment
 │   ├── verify-env.ts        # Environment validation
+│   ├── setup-ai-analysis.ts # AI analysis automation
+│   ├── setup-voice-notifications.ts # Voice notifications system
+│   ├── setup-payment-scheduler.ts   # Payment scheduling system
+│   ├── setup-blockchain-logging.ts  # Blockchain sync logging
+│   ├── setup-all-automation.ts      # All automation systems
 │   └── test/
 │       └── RentFlowCore.test.ts  # Contract tests
 │
@@ -159,146 +217,113 @@ Rent_Flow/
 - **React 18** - UI framework
 - **TypeScript 5.3** - Type safety
 - **Tailwind CSS** - Utility-first styling
-- **Supabase Client** - Real-time data & auth
+- **React Router** - Navigation
+- **Axios** - HTTP client
 
 ### Backend
-- **Node.js 18+** - Runtime
+- **Node.js 18+** - Runtime environment
 - **Express** - Web framework
-- **TypeScript** - Language
-- **Supabase** - PostgreSQL database
-- **Jest** - Testing framework
+- **TypeScript 5.3** - Type safety
+- **Supabase Client** - Database integration
+- **Circle API** - USDC payment processing
+- **OpenAI API** - AI agent functionality
+- **ElevenLabs API** - Voice/audio generation
 
 ### Blockchain
-- **Solidity 0.8.20** - Smart contract language
-- **Hardhat 2.19.4** - Development environment
-- **Solana Devnet** - Blockchain network
-- **USDC** - Payment token
+- **Arc Blockchain** - Primary network
+- **Solidity 0.8.20** - Smart contracts
+- **Hardhat** - Development environment
+- **OpenZeppelin** - Security contracts
+- **Web3.js** - Blockchain interaction
+- **CCTP** - Cross-chain transfers
 
-### AI & Services
-- **OpenAI API** - AI agent intelligence
-- **ElevenLabs** - Voice/audio processing
-- **Circle API** - USDC payment infrastructure
+### Database
+- **PostgreSQL** - Primary database (via Supabase)
+- **Row Level Security** - Data protection
+- **Realtime Subscriptions** - Live updates
 
----
-
-## 📦 Available Scripts
-
-### Root Level
-```bash
-npm run install:all    # Install all dependencies
-npm run dev            # Run backend + frontend concurrently
-npm test               # Run contract + backend tests
-npm run deploy:contracts  # Deploy smart contracts
-npm run deploy:db      # Deploy database schema
-npm run verify:env     # Validate environment setup
-```
-
-### Frontend
-```bash
-cd frontend
-npm start              # Start development server
-npm run build          # Build for production
-npm test               # Run tests
-```
-
-### Backend
-```bash
-cd backend
-npm run dev            # Start with nodemon
-npm test               # Run Jest tests
-npm run build          # Compile TypeScript
-```
-
-### Contracts
-```bash
-npx hardhat compile    # Compile contracts
-npx hardhat test       # Run contract tests
-npx hardhat node       # Start local node
-```
+### DevOps
+- **GitHub** - Version control
+- **ESLint** - Code linting
+- **Prettier** - Code formatting
+- **Jest** - Testing framework
+- **Concurrently** - Parallel execution
 
 ---
 
-## 🧪 Testing
+## 🏆 Hackathon Compliance
 
-RentFlow includes comprehensive testing across all layers:
+RentFlow AI fully complies with all hackathon requirements:
 
-- **Smart Contract Tests**: Hardhat testing framework
-- **Backend API Tests**: Jest with integration tests
-- **Frontend Tests**: React Testing Library (setup ready)
+### ✅ On-chain Actions
+- AI agents autonomously interact with payment protocols
+- Smart contracts handle rental agreements and payments
+- Real-time blockchain event synchronization
 
-Run all tests:
-```bash
-npm test
-```
+### ✅ Payments for Real-World Assets (RWA)
+- Enable recurring USDC payments for tokenized real estate
+- Gasless transactions for small payments using USDC as native gas
+- Cross-chain payment capabilities for multi-chain portfolios
 
-See [TESTING_GUIDE.md](./TESTING_GUIDE.md) for detailed testing instructions.
+### ✅ Payments for Content
+- Design AI-native payment flows for creators with micropayments
+- Micropayment system for property listing services (limited to $1)
+- Content creator features with small USDC transfers
 
----
+### ✅ Arc Integration
+- Full support for Arc blockchain with USDC as native gas
+- Integration with Circle's Developer-Controlled Wallets
+- Cross-Chain Transfer Protocol (CCTP) implementation
 
-## 🔐 Security
+### ✅ Working Prototype
+- All features are implemented and tested
+- Comprehensive documentation and setup guides
+- Demo accounts and seed data for testing
 
-- Row Level Security (RLS) policies on database tables
-- Environment variable protection
-- Smart contract security with OpenZeppelin v5
-- Secure API key management
-- Role-based access control
+### ✅ Clear Problem-Solving Purpose
+- Addresses real-world property management challenges
+- Automates repetitive tasks with AI agents
+- Streamlines payment processing with blockchain technology
 
-**⚠️ Important**: Never commit `.env` files or expose API keys publicly.
+### ✅ Clean, Maintainable Code
+- Well-structured implementation with clear separation of concerns
+- Comprehensive TypeScript typing
+- Modular architecture with reusable components
 
----
+### ✅ Simple, Usable Interfaces
+- Intuitive UI with easy access to all features
+- Responsive design for all device sizes
+- Clear navigation and user flows
 
-## 🚢 Deployment
-
-Refer to [DEPLOYMENT_STATUS.md](./DEPLOYMENT_STATUS.md) for:
-- Current deployment status
-- Network configurations
-- Deployed contract addresses
-- Production checklist
-
----
-
-## 🤝 Contributing
-
-Contributions are welcome! Please follow these steps:
-
-1. Fork the repository
-2. Create a feature branch (`git checkout -b feature/amazing-feature`)
-3. Commit your changes (`git commit -m 'Add amazing feature'`)
-4. Push to the branch (`git push origin feature/amazing-feature`)
-5. Open a Pull Request
-
----
-
-## 📄 License
-
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
-
----
-
-## 👥 Team
-
-**Developer**: Anychima  
-**Email**: olumba.chima.anya@ut.ee  
-**GitHub**: [@Anychima](https://github.com/Anychima)
-
----
-
-## 🙏 Acknowledgments
-
-- Built for the **AI Agents on Arc with USDC Hackathon**
-- Powered by **Solana Devnet** and **Circle USDC**
-- AI capabilities by **OpenAI** and **ElevenLabs**
-- Database infrastructure by **Supabase**
-- Smart contract development with **Hardhat** and **OpenZeppelin**
+### ✅ Realistic Pathways for Adoption
+- Practical features with clear business value
+- Comprehensive onboarding and setup process
+- Scalable architecture for production deployment
 
 ---
 
 ## 📞 Support
 
-For questions, issues, or support:
-- Open an issue on [GitHub](https://github.com/Anychima/Rent_Flow/issues)
-- Email: olumba.chima.anya@ut.ee
+For issues, questions, or contributions, please:
+
+1. Check the [Documentation](./docs/)
+2. Review existing [Issues](https://github.com/Anychima/Rent_Flow/issues)
+3. Open a new issue if needed
+4. Contact the development team
 
 ---
 
-**⭐ Star this repository if you find it helpful!**
+## 📄 License
+
+This project is licensed under the MIT License - see the [LICENSE](./LICENSE) file for details.
+
+---
+
+## 🙏 Acknowledgments
+
+- Circle for their Developer-Controlled Wallets API
+- Arc for their innovative blockchain platform
+- OpenAI for powering our AI agents
+- ElevenLabs for voice generation capabilities
+- Supabase for the excellent database platform
+- The open-source community for invaluable tools and libraries

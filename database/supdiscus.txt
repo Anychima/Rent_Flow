@@ -1,0 +1,26 @@
+Account name: olumbach@ut.ee
+password: olumbaobuisGod1@
+Username:Anychima
+Repository: https://github.com/Anychima/Rent_Flow
+
+
+5 papers related to Dasia, discuss how they can mitigate the issues 
+
+ACM survey
+IEEE communication magazine/survey
+ScienceDirect internet of things gemini
+
+Table of content of research papers
+Literature/survey settings
+Motivation
+
+
+5 papers without dasia
+5 papers with dasia
+
+ISSRM domain model
+
+Make distinction between business asset.
+
+Exploring Sybil and Double-Spending
+Risks in Blockchain Systems: https://ieeexplore.ieee.org/document/9435780

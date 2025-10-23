@@ -12,7 +12,7 @@ interface Property {
 interface MaintenanceRequest {
   id?: string;
   property_id: string;
-  requestor_id: string;
+  requested_by: string;
   title: string;
   description: string;
   category: string;
@@ -54,7 +54,7 @@ export default function MaintenanceForm({ maintenance, onClose, onSubmit }: Main
   const [aiAnalysis, setAiAnalysis] = useState<any>(null);
   const [formData, setFormData] = useState<Partial<MaintenanceRequest>>({
     property_id: '',
-    requestor_id: 'a0000000-0000-0000-0000-000000000001', // Default manager
+    requested_by: 'a0000000-0000-0000-0000-000000000001', // Default manager
     title: '',
     description: '',
     category: 'other',

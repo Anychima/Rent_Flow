@@ -97,6 +97,17 @@ class PaymentScheduler {
     const today = new Date();
     const rentDueDay = lease.rent_due_day || 1;
 
+    // Validate lease data
+    if (!lease.id || !lease.tenant_id || !lease.property_id) {
+      console.error('Invalid lease data - missing required fields:', lease);
+      return 0;
+    }
+
+    if (!lease.monthly_rent_usdc || lease.monthly_rent_usdc <= 0) {
+      console.error('Invalid rent amount for lease:', lease.id);
+      return 0;
+    }
+
     // Generate for current month + next 2 months
     for (let monthOffset = 0; monthOffset < 3; monthOffset++) {
       const targetDate = new Date(
@@ -126,11 +137,11 @@ class PaymentScheduler {
         continue; // Payment already exists
       }
 
-      // Create payment
+      // Create payment with validated amount
       const { error } = await supabase.from('rent_payments').insert({
         lease_id: lease.id,
         tenant_id: lease.tenant_id,
-        amount_usdc: lease.monthly_rent_usdc,
+        amount_usdc: parseFloat(lease.monthly_rent_usdc.toString()),
         due_date: targetDate.toISOString().split('T')[0],
         status: 'pending',
         payment_date: targetDate.toISOString(),
@@ -140,6 +151,8 @@ class PaymentScheduler {
 
       if (!error) {
         created++;
+      } else {
+        console.error('Error creating payment for lease:', lease.id, error);
       }
     }
 

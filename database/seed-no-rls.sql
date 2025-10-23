@@ -17,7 +17,7 @@ TRUNCATE TABLE messages, rent_payments, maintenance_requests, leases, properties
 INSERT INTO users (id, wallet_address, email, full_name, phone, user_type, is_active) VALUES
     ('a0000000-0000-0000-0000-000000000001', '8kr6b3uuYx4MgvY8BW9ETogd3cc5ibTj3g8oVZCkKyiz', 'manager@rentflow.ai', 'Sarah Johnson', '+1-555-0101', 'property_manager', true),
     ('a0000000-0000-0000-0000-000000000002', 'CqQT3otUUcvpvsUCkWzfebanHZeGqKEJprjw5NPLwx4m', 'ai@rentflow.ai', 'RentFlow AI Agent', NULL, 'ai_agent', true),
-    ('a0000000-0000-0000-0000-000000000003', 'Sol1TenantAddress1111111111111111111111', 'john.doe@email.com', 'John Doe', '+1-555-0102', 'tenant', true),
+    ('a0000000-0000-0000-0000-000000000003', '4Ugn6vamVywNM8iPSKDXPTVnmhjF6v8P45HtEu4PwfLV', 'john.doe@email.com', 'John Doe', '+1-555-0102', 'tenant', true),
     ('a0000000-0000-0000-0000-000000000004', 'Sol2TenantAddress2222222222222222222222', 'jane.smith@email.com', 'Jane Smith', '+1-555-0103', 'tenant', true),
     ('a0000000-0000-0000-0000-000000000005', 'Sol3TenantAddress3333333333333333333333', 'mike.wilson@email.com', 'Mike Wilson', '+1-555-0104', 'tenant', true),
     ('a0000000-0000-0000-0000-000000000006', 'Sol4TenantAddress4444444444444444444444', 'emma.davis@email.com', 'Emma Davis', '+1-555-0105', 'tenant', true),

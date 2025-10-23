@@ -3,20 +3,29 @@
  * Automates sending of voice notifications for various events
  */
 
-import { createClient } from '@supabase/supabase-js';
+import { createClient, SupabaseClient } from '@supabase/supabase-js';
 import elevenLabsService from './elevenLabsService';
-
-const supabase = createClient(
-  process.env.SUPABASE_URL!,
-  process.env.SUPABASE_KEY!
-);
 
 class VoiceNotificationScheduler {
   private isRunning: boolean = false;
   private intervalId: NodeJS.Timeout | null = null;
+  private supabase: SupabaseClient | null = null;
 
   constructor() {
     console.log('🔔 Voice Notification Scheduler initialized');
+  }
+
+  /**
+   * Initialize Supabase client
+   */
+  private initializeSupabase(): SupabaseClient {
+    if (!this.supabase) {
+      this.supabase = createClient(
+        process.env.SUPABASE_URL || '',
+        process.env.SUPABASE_KEY || ''
+      );
+    }
+    return this.supabase;
   }
 
   /**
@@ -27,6 +36,9 @@ class VoiceNotificationScheduler {
       console.warn('⚠️  Voice notification scheduler is already running');
       return;
     }
+
+    // Initialize Supabase when starting
+    this.initializeSupabase();
 
     this.isRunning = true;
     console.log(`✅ Voice notification scheduler started (checking every ${intervalMinutes} minutes)`);
@@ -57,6 +69,7 @@ class VoiceNotificationScheduler {
    */
   private async checkAndSendNotifications() {
     console.log(`🔍 [${new Date().toISOString()}] Checking for voice notifications to send...`);
+    const supabase = this.initializeSupabase();
 
     try {
       await this.sendRentReminders();
@@ -71,6 +84,7 @@ class VoiceNotificationScheduler {
    * Send rent reminders for upcoming due payments
    */
   private async sendRentReminders() {
+    const supabase = this.initializeSupabase();
     try {
       const today = new Date();
       const threeDaysFromNow = new Date(today);
@@ -78,7 +92,7 @@ class VoiceNotificationScheduler {
 
       // Get payments due in the next 3 days that haven't been paid
       const { data: payments, error } = await supabase
-        .from('payments')
+        .from('rent_payments')
         .select(`
           *,
           lease:leases(
@@ -156,6 +170,7 @@ class VoiceNotificationScheduler {
    * Send lease expiration warnings
    */
   private async sendLeaseExpirationWarnings() {
+    const supabase = this.initializeSupabase();
     try {
       const today = new Date();
       const thirtyDaysFromNow = new Date(today);
@@ -245,6 +260,7 @@ class VoiceNotificationScheduler {
    * Clean up old audio files and notifications
    */
   private async cleanupOldNotifications() {
+    const supabase = this.initializeSupabase();
     try {
       // Clean up audio files older than 30 days
       const deletedCount = elevenLabsService.cleanupOldAudioFiles(30);
@@ -277,6 +293,7 @@ class VoiceNotificationScheduler {
    * Send immediate notification for maintenance status change
    */
   async sendMaintenanceNotification(maintenanceId: string, customMessage?: string) {
+    const supabase = this.initializeSupabase();
     try {
       const { data: maintenance, error } = await supabase
         .from('maintenance_requests')
@@ -336,9 +353,10 @@ class VoiceNotificationScheduler {
    * Send immediate notification for payment confirmation
    */
   async sendPaymentConfirmation(paymentId: string) {
+    const supabase = this.initializeSupabase();
     try {
       const { data: payment, error } = await supabase
-        .from('payments')
+        .from('rent_payments')
         .select(`
           *,
           lease:leases(

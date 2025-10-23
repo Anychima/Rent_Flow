@@ -1,15 +1,15 @@
 import { useState, useEffect } from 'react';
 import './index.css';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
-import Login from './components/Login';
-import Register from './components/Register';
 import PropertyForm from './components/PropertyForm';
 import LeaseForm from './components/LeaseForm';
 import PaymentForm from './components/PaymentForm';
 import PaymentAnalytics from './components/PaymentAnalytics';
 import MaintenanceForm from './components/MaintenanceForm';
-import TenantPortal from './components/TenantPortal';
+import TenantDashboard from './components/TenantDashboard';
 import VoiceNotifications from './components/VoiceNotifications';
+import PublicPropertyList from './components/PublicPropertyList';
+import PublicPropertyListings from './components/PublicPropertyListings';
 
 interface Toast {
   id: number;
@@ -82,7 +82,7 @@ interface Payment {
 interface MaintenanceRequest {
   id: string;
   property_id: string;
-  requestor_id: string;
+  requested_by: string;
   title: string;
   description: string;
   category: string;
@@ -126,7 +126,6 @@ function Dashboard() {
   const [editingPayment, setEditingPayment] = useState<Payment | null>(null);
   const [showMaintenanceForm, setShowMaintenanceForm] = useState(false);
   const [editingMaintenance, setEditingMaintenance] = useState<MaintenanceRequest | null>(null);
-  const [showTenantPortal, setShowTenantPortal] = useState(false);
 
   useEffect(() => {
     fetchData();
@@ -599,13 +598,6 @@ function Dashboard() {
               <div className="flex items-center space-x-2 px-3 py-1 bg-gray-100 rounded-lg">
                 <span className="text-sm text-gray-700">{user?.email}</span>
               </div>
-              <button
-                onClick={() => setShowTenantPortal(true)}
-                className="px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm font-medium hover:bg-indigo-700 transition-colors"
-                title="Access Tenant Portal"
-              >
-                🏠 Tenant Portal
-              </button>
               <button
                 onClick={signOut}
                 className="px-3 py-1 bg-red-100 text-red-700 rounded-lg text-sm font-medium hover:bg-red-200 transition-colors"
@@ -1210,27 +1202,100 @@ function Dashboard() {
           onSubmit={handleMaintenanceSubmit}
         />
       )}
-
-      {/* Tenant Portal */}
-      {showTenantPortal && (
-        <TenantPortal onBack={() => setShowTenantPortal(false)} />
-      )}
     </div>
   );
 }
 
 export default function App() {
-  const [authMode, setAuthMode] = useState<'login' | 'register'>('login');
-
   return (
     <AuthProvider>
-      <AppContent authMode={authMode} setAuthMode={setAuthMode} />
+      <AppContent />
     </AuthProvider>
   );
 }
 
-function AppContent({ authMode, setAuthMode }: { authMode: 'login' | 'register'; setAuthMode: (mode: 'login' | 'register') => void }) {
-  const { user, loading } = useAuth();
+function AppContent() {
+  const { user, userProfile, loading, signOut } = useAuth();
+  const [loadTimeout, setLoadTimeout] = useState(false);
+  const [showPublicProperties, setShowPublicProperties] = useState(false);
+
+  // Safety timeout - if loading takes more than 20 seconds, show error
+  useEffect(() => {
+    if (loading) {
+      const timer = setTimeout(() => {
+        console.error('❌ Loading timeout - forcing stop after 20s');
+        setLoadTimeout(true);
+      }, 20000); // Increased to 20s to give more time
+      return () => clearTimeout(timer);
+    }
+    return undefined;
+  }, [loading]);
+
+  // Debug logging
+  console.log('🔍 AppContent Debug:', {
+    loading,
+    user: user?.email,
+    userProfile: userProfile,
+    role: userProfile?.role,
+    loadTimeout
+  });
+
+  // Loading timeout error state
+  if (loadTimeout) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gray-50">
+        <div className="text-center max-w-md px-6">
+          <div className="text-red-600 text-6xl mb-4">❌</div>
+          <h2 className="text-2xl font-bold text-gray-900 mb-4">Loading Timeout</h2>
+          <p className="text-gray-600 mb-2">
+            The application took too long to load. This might be due to cached data.
+          </p>
+          <p className="text-sm text-gray-500 mb-6">
+            Since it works in incognito mode, your browser cache is likely corrupted.
+          </p>
+          <div className="space-y-3">
+            <button
+              onClick={() => {
+                // Clear all browser storage
+                localStorage.clear();
+                sessionStorage.clear();
+                // Clear IndexedDB (Supabase auth)
+                if (window.indexedDB) {
+                  window.indexedDB.databases().then(dbs => {
+                    dbs.forEach(db => {
+                      if (db.name) {
+                        window.indexedDB.deleteDatabase(db.name);
+                      }
+                    });
+                  });
+                }
+                // Force hard reload
+                window.location.reload();
+              }}
+              className="w-full px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-medium transition-colors"
+            >
+              🧼 Clear Cache & Reload
+            </button>
+            <button
+              onClick={() => window.location.reload()}
+              className="w-full px-6 py-3 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 font-medium transition-colors"
+            >
+              🔄 Just Reload
+            </button>
+          </div>
+          <div className="mt-6 p-4 bg-blue-50 border border-blue-200 rounded-lg text-left">
+            <p className="text-sm font-medium text-blue-900 mb-2">Or manually clear cache:</p>
+            <ol className="text-xs text-blue-800 space-y-1">
+              <li>1. Press <kbd className="px-2 py-1 bg-white rounded border">Ctrl + Shift + Delete</kbd></li>
+              <li>2. Select "Cached images and files"</li>
+              <li>3. Click "Clear data"</li>
+              <li>4. Reload this page</li>
+            </ol>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   if (loading) {
     return (
@@ -1238,18 +1303,83 @@ function AppContent({ authMode, setAuthMode }: { authMode: 'login' | 'register';
         <div className="text-center">
           <div className="animate-spin rounded-full h-16 w-16 border-b-2 border-blue-600 mx-auto"></div>
           <p className="mt-4 text-gray-600">Loading RentFlow AI...</p>
+          <p className="mt-2 text-sm text-gray-500">This should only take a few seconds</p>
         </div>
       </div>
     );
   }
 
+  // Not authenticated - show public property listings
   if (!user) {
-    return authMode === 'login' ? (
-      <Login onToggleMode={() => setAuthMode('register')} />
-    ) : (
-      <Register onToggleMode={() => setAuthMode('login')} />
+    // If user explicitly requests old property list (from a button)
+    if (showPublicProperties) {
+      return <PublicPropertyList onBack={() => setShowPublicProperties(false)} />;
+    }
+    
+    // Default: Show new public listings page (no auth required)
+    return <PublicPropertyListings />;
+  }
+
+  // User authenticated but profile failed to load
+  if (!userProfile) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gray-50">
+        <div className="text-center max-w-md px-6">
+          <div className="text-yellow-600 text-6xl mb-4">⚠️</div>
+          <h2 className="text-2xl font-bold text-gray-900 mb-4">Profile Load Failed</h2>
+          <p className="text-gray-600 mb-2">
+            Your account is authenticated but we couldn't load your profile from the database.
+          </p>
+          <p className="text-sm text-gray-500 mb-6">
+            This might be due to a slow connection to Supabase or a database issue.
+          </p>
+          <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-6 text-left">
+            <p className="text-sm font-medium text-blue-900 mb-2">Quick Fixes:</p>
+            <ul className="text-sm text-blue-800 space-y-1">
+              <li>• Check your internet connection</li>
+              <li>• Try disabling VPN if enabled</li>
+              <li>• Clear browser cache (Ctrl+Shift+Delete)</li>
+              <li>• Try incognito/private mode</li>
+            </ul>
+          </div>
+          <div className="space-y-3">
+            <button
+              onClick={() => window.location.reload()}
+              className="w-full px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-medium transition-colors"
+            >
+              🔄 Try Again
+            </button>
+            <button
+              onClick={() => {
+                localStorage.clear();
+                sessionStorage.clear();
+                window.location.reload();
+              }}
+              className="w-full px-6 py-3 bg-purple-600 text-white rounded-lg hover:bg-purple-700 font-medium transition-colors"
+            >
+              🧼 Clear Cache & Reload
+            </button>
+            <button
+              onClick={signOut}
+              className="w-full px-6 py-3 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 font-medium transition-colors"
+            >
+              🚪 Sign Out
+            </button>
+          </div>
+        </div>
+      </div>
     );
   }
 
+  // Authenticated - route based on role
+  console.log('🔀 Routing decision:', userProfile.role);
+  
+  if (userProfile.role === 'tenant') {
+    console.log('✅ Showing TenantDashboard');
+    return <TenantDashboard />;
+  }
+
+  console.log('✅ Showing Manager Dashboard');
+  // Default to manager/admin dashboard
   return <Dashboard />;
 }
