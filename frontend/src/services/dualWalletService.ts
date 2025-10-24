@@ -35,21 +35,38 @@ export function isPhantomAvailable(): boolean {
 /**
  * Connect to Phantom wallet
  */
-export async function connectPhantomWallet(): Promise<WalletConnection> {
+export async function connectPhantomWallet(userId?: string, role?: 'manager' | 'tenant'): Promise<WalletConnection> {
   try {
     if (!isPhantomAvailable()) {
+      // Prompt user to install Phantom
+      window.open('https://phantom.app/', '_blank');
       return {
         type: 'phantom',
         connected: false,
         success: false,
-        error: 'Phantom wallet not installed'
+        error: 'Phantom wallet not installed. Opening installation page...'
       };
     }
 
+    console.log('🟣 [Phantom] Requesting wallet connection...');
     const response = await window.solana.connect();
     const address = response.publicKey.toString();
 
     console.log('✅ [Phantom] Wallet connected:', address);
+
+    // Save to backend if userId provided
+    if (userId) {
+      try {
+        await fetch('http://localhost:3001/api/wallet/phantom/connect', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ userId, address, role })
+        });
+        console.log('✅ [Phantom] Wallet saved to database');
+      } catch (saveError) {
+        console.warn('⚠️ [Phantom] Failed to save wallet to database:', saveError);
+      }
+    }
 
     return {
       type: 'phantom',

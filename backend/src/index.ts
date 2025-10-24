@@ -134,6 +134,134 @@ app.get('/api/blockchain/wallet/:address/balance', async (req: Request, res: Res
   }
 });
 
+// ==================== Circle Wallet Endpoints ====================
+
+// Get or create Circle wallet for user
+app.get('/api/circle/wallet/:userId', async (req: Request, res: Response) => {
+  try {
+    const { userId } = req.params;
+    const { role } = req.query as { role?: 'manager' | 'tenant' };
+
+    if (!userId || !role) {
+      return res.status(400).json({
+        success: false,
+        error: 'User ID and role are required'
+      });
+    }
+
+    console.log(`💼 [Circle API] Getting wallet for user: ${userId}, role: ${role}`);
+
+    // Get wallet info from Circle signing service
+    const result = await circleSigningService.getOrCreateUserWallet(userId, role);
+
+    if (result.error) {
+      return res.status(500).json({
+        success: false,
+        error: result.error
+      });
+    }
+
+    // Save wallet info to database
+    const walletColumn = role === 'manager' ? 'circle_wallet_id' : 'circle_wallet_id';
+    const addressColumn = role === 'manager' ? 'wallet_address' : 'wallet_address';
+    
+    await supabase
+      .from('users')
+      .update({
+        [walletColumn]: result.walletId,
+        [addressColumn]: result.address
+      })
+      .eq('id', userId);
+
+    console.log(`✅ [Circle API] Wallet connected for ${role}:`, {
+      walletId: result.walletId,
+      address: result.address
+    });
+
+    res.json({
+      success: true,
+      data: {
+        walletId: result.walletId,
+        address: result.address,
+        userId,
+        role
+      }
+    });
+  } catch (error) {
+    console.error('❌ [Circle API] Error getting wallet:', error);
+    res.status(500).json({
+      success: false,
+      error: error instanceof Error ? error.message : 'Unknown error'
+    });
+  }
+});
+
+// Sign message with Circle wallet
+app.post('/api/circle/sign-message', async (req: Request, res: Response) => {
+  try {
+    const { walletId, message } = req.body;
+
+    if (!walletId || !message) {
+      return res.status(400).json({
+        success: false,
+        error: 'Wallet ID and message are required'
+      });
+    }
+
+    const result = await circleSigningService.signMessageWithCircleWallet(walletId, message);
+
+    res.json(result);
+  } catch (error) {
+    console.error('Error signing message:', error);
+    res.status(500).json({
+      success: false,
+      error: error instanceof Error ? error.message : 'Unknown error'
+    });
+  }
+});
+
+// Save Phantom wallet address to database
+app.post('/api/wallet/phantom/connect', async (req: Request, res: Response) => {
+  try {
+    const { userId, address, role } = req.body;
+
+    if (!userId || !address) {
+      return res.status(400).json({
+        success: false,
+        error: 'User ID and wallet address are required'
+      });
+    }
+
+    console.log(`🟣 [Phantom] Connecting wallet for user: ${userId}`);
+
+    // Save to database
+    await supabase
+      .from('users')
+      .update({
+        phantom_wallet_address: address,
+        wallet_address: address // Also update main wallet field
+      })
+      .eq('id', userId);
+
+    console.log(`✅ [Phantom] Wallet connected:`, address);
+
+    res.json({
+      success: true,
+      data: {
+        address,
+        userId,
+        role
+      }
+    });
+  } catch (error) {
+    console.error('❌ [Phantom] Error connecting wallet:', error);
+    res.status(500).json({
+      success: false,
+      error: error instanceof Error ? error.message : 'Unknown error'
+    });
+  }
+});
+
 // Get all properties (for managers - only their own)
 app.get('/api/properties', async (req: Request, res: Response) => {
   try {
