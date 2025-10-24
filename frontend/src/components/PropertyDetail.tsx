@@ -26,7 +26,7 @@ interface Property {
   square_feet: number;
   property_type: string;
   amenities: string[];
-  images: string[];
+  image_urls?: string[]; // Changed from images to match database schema
   is_active: boolean;
   available_date: string | null;
   pet_friendly: boolean;
@@ -182,8 +182,8 @@ const PropertyDetail: React.FC = () => {
     );
   }
 
-  const images = property.images.length > 0 
-    ? property.images 
+  const images = (property.image_urls && property.image_urls.length > 0) 
+    ? property.image_urls 
     : getPlaceholderImages(property.property_type);
 
   const nextImage = () => {
