@@ -1353,16 +1353,95 @@ app.put('/api/payments/:id', async (req: Request, res: Response) => {
 app.post('/api/payments/:id/complete', async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
-    const { transaction_hash } = req.body;
+    const { tenant_id, wallet_address, wallet_id, wallet_type, transaction_hash } = req.body;
 
-    console.log('💳 [Payment Complete] Marking payment as completed:', id);
+    console.log('💳 [Payment Complete] Processing payment:', {
+      paymentId: id,
+      tenantId: tenant_id,
+      walletType: wallet_type,
+      hasProvidedHash: !!transaction_hash
+    });
 
+    // Get payment details first
+    const { data: payment, error: paymentError } = await supabase
+      .from('rent_payments')
+      .select(`
+        *,
+        lease:leases(
+          *,
+          property:properties(
+            owner_id
+          )
+        )
+      `)
+      .eq('id', id)
+      .single();
+
+    if (paymentError || !payment) {
+      console.error('❌ [Payment Complete] Error fetching payment:', paymentError);
+      throw paymentError || new Error('Payment not found');
+    }
+
+    let actualTransactionHash = transaction_hash;
+    
+    // If using Circle wallet and no hash provided, initiate real USDC transfer
+    if (wallet_type === 'circle' && wallet_id && !transaction_hash) {
+      console.log('🔗 [Payment Complete] Initiating Circle USDC transfer...');
+      
+      // Get manager's wallet address from database
+      const { data: managerData } = await supabase
+        .from('users')
+        .select('wallet_address, circle_wallet_id')
+        .eq('id', payment.lease.property.owner_id)
+        .single();
+
+      const managerAddress = managerData?.wallet_address;
+      
+      if (!managerAddress) {
+        return res.status(400).json({
+          success: false,
+          error: 'Manager wallet address not found. Manager must connect wallet first.'
+        });
+      }
+
+      console.log('💰 [Payment Complete] Transfer details:', {
+        from: wallet_id,
+        to: managerAddress,
+        amount: payment.amount_usdc
+      });
+
+      // Initiate actual USDC transfer via Circle API
+      const transferResult = await circlePaymentService.initiateTransfer(
+        wallet_id,
+        managerAddress,
+        parseFloat(payment.amount_usdc),
+        {
+          paymentId: payment.id,
+          leaseId: payment.lease_id,
+          purpose: `Rent Payment - ${payment.payment_type}`
+        }
+      );
+
+      if (!transferResult.success) {
+        console.error('❌ [Payment Complete] Transfer failed:', transferResult.error);
+        return res.status(400).json({
+          success: false,
+          error: transferResult.error || 'USDC transfer failed'
+        });
+      }
+
+      actualTransactionHash = transferResult.transactionHash || transferResult.transactionId;
+      console.log('✅ [Payment Complete] USDC transferred! Hash:', actualTransactionHash);
+    }
+
+    // Update payment status
     const { data, error } = await supabase
       .from('rent_payments')
       .update({ 
         status: 'completed',
-        transaction_hash: transaction_hash || `SIMULATED_${Date.now()}`,
-        payment_date: new Date().toISOString()
+        transaction_hash: actualTransactionHash || `SIMULATED_${Date.now()}`,
+        payment_date: new Date().toISOString(),
+        on_chain: !!actualTransactionHash
       })
       .eq('id', id)
       .select('*')
@@ -1417,19 +1496,23 @@ app.post('/api/payments/:id/complete', async (req: Request, res: Response) => {
           .single();
 
         if (lease) {
+          console.log('🔄 [Payment Complete] Updating user role to tenant:', lease.tenant_id);
+          
           // Transition user from prospective_tenant to tenant
-          const { error: roleError } = await supabase
+          const { data: updatedUser, error: roleError } = await supabase
             .from('users')
             .update({
               role: 'tenant',
               user_type: 'tenant'
             })
-            .eq('id', lease.tenant_id);
+            .eq('id', lease.tenant_id)
+            .select('*')
+            .single();
 
           if (roleError) {
             console.error('❌ [Payment Complete] Error updating user role:', roleError);
           } else {
-            console.log('✅ [Payment Complete] User role updated to tenant!');
+            console.log('✅ [Payment Complete] User role updated to tenant!', updatedUser);
           }
         }
       }
@@ -1439,7 +1522,8 @@ app.post('/api/payments/:id/complete', async (req: Request, res: Response) => {
       success: true, 
       data, 
       message: 'Payment completed successfully',
-      lease_activated: allComplete && allPayments && allPayments.length >= 2
+      lease_activated: allComplete && allPayments && allPayments.length >= 2,
+      transaction_hash: actualTransactionHash
     });
   } catch (error) {
     console.error('Error completing payment:', error);

@@ -89,17 +89,16 @@ export default function PaymentSection({
         paymentId: confirmPayment.id,
         type: confirmPayment.payment_type,
         amount: confirmPayment.amount_usdc,
-        walletType
+        walletType,
+        walletId
       });
 
-      // Mark payment as completed
-      // NOTE: In production, this should call Circle/Phantom API for actual USDC transfer
+      // Complete payment - backend will handle actual USDC transfer for Circle wallets
       const response = await axios.post(`${API_URL}/api/payments/${confirmPayment.id}/complete`, {
         tenant_id: tenantId,
         wallet_address: walletAddress,
         wallet_id: walletId,
-        wallet_type: walletType,
-        transaction_hash: `DEV_SIMULATED_${Date.now()}` // Dev mode simulation
+        wallet_type: walletType
       });
 
       if (response.data.success) {
