@@ -22,6 +22,8 @@ import openaiService from './services/openaiService';
 import elevenLabsService from './services/elevenLabsService';
 import voiceNotificationScheduler from './services/voiceNotificationScheduler';
 import applicationService from './services/applicationService';
+import circleSigningService from './services/circleSigningService';
+import solanaLeaseService from './services/solanaLeaseService';
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -43,21 +45,116 @@ app.get('/api/health', (_req: Request, res: Response) => {
     status: 'healthy',
     timestamp: new Date().toISOString(),
     network: process.env.BLOCKCHAIN_NETWORK,
-    deployer: process.env.DEPLOYER_ADDRESS
+    deployer: process.env.DEPLOYER_ADDRESS,
+    blockchain: {
+      solana: solanaLeaseService.isReady(),
+      circlePayments: circlePaymentService.isReady(),
+    }
   });
 });
 
-// Get all properties
-app.get('/api/properties', async (_req: Request, res: Response) => {
+// Blockchain info endpoint
+app.get('/api/blockchain/info', (_req: Request, res: Response) => {
   try {
-    const { data, error } = await supabase
+    const networkInfo = solanaLeaseService.getNetworkInfo();
+    res.json({
+      success: true,
+      data: {
+        network: networkInfo.network,
+        rpcUrl: networkInfo.rpcUrl,
+        isConfigured: networkInfo.isConfigured,
+        circlePaymentsEnabled: circlePaymentService.isReady(),
+        features: {
+          onChainLeaseStorage: solanaLeaseService.isReady(),
+          onChainPayments: circlePaymentService.isReady(),
+          signatureVerification: solanaLeaseService.isReady(),
+        }
+      }
+    });
+  } catch (error) {
+    console.error('Error fetching blockchain info:', error);
+    res.status(500).json({
+      success: false,
+      error: error instanceof Error ? error.message : 'Unknown error'
+    });
+  }
+});
+
+// Verify lease on blockchain
+app.get('/api/blockchain/verify-lease/:leaseHash', async (req: Request, res: Response) => {
+  try {
+    const { leaseHash } = req.params;
+
+    if (!leaseHash) {
+      return res.status(400).json({
+        success: false,
+        error: 'Lease hash is required'
+      });
+    }
+
+    const result = await solanaLeaseService.verifyLeaseOnChain(leaseHash);
+
+    res.json({
+      success: result.success,
+      verified: result.verified,
+      error: result.error
+    });
+  } catch (error) {
+    console.error('Error verifying lease:', error);
+    res.status(500).json({
+      success: false,
+      error: error instanceof Error ? error.message : 'Unknown error'
+    });
+  }
+});
+
+// Get wallet balance
+app.get('/api/blockchain/wallet/:address/balance', async (req: Request, res: Response) => {
+  try {
+    const { address } = req.params;
+
+    if (!address) {
+      return res.status(400).json({
+        success: false,
+        error: 'Wallet address is required'
+      });
+    }
+
+    const result = await solanaLeaseService.getWalletBalance(address);
+
+    res.json(result);
+  } catch (error) {
+    console.error('Error fetching wallet balance:', error);
+    res.status(500).json({
+      success: false,
+      error: error instanceof Error ? error.message : 'Unknown error'
+    });
+  }
+});
+
+// Get all properties (for managers - only their own)
+app.get('/api/properties', async (req: Request, res: Response) => {
+  try {
+    const { manager_id } = req.query;
+
+    let query = supabase
       .from('properties')
       .select('*')
-      .eq('is_active', true)
-      .order('created_at', { ascending: false });
+      .eq('is_active', true);
+
+    // Filter by manager_id if provided (for manager dashboard)
+    if (manager_id) {
+      console.log('🏛️ [Properties] Fetching properties for manager:', manager_id);
+      query = query.eq('owner_id', manager_id);
+    } else {
+      console.log('⚠️ [Properties] No manager_id provided - returning all properties (public view)');
+    }
+
+    const { data, error } = await query.order('created_at', { ascending: false });
 
     if (error) throw error;
 
+    console.log('✅ [Properties] Returned', data?.length || 0, 'properties');
     res.json({ success: true, data });
   } catch (error) {
     console.error('Error fetching properties:', error);
@@ -82,6 +179,42 @@ app.get('/api/properties/public', async (_req: Request, res: Response) => {
     res.json({ success: true, data });
   } catch (error) {
     console.error('Error fetching public properties:', error);
+    res.status(500).json({ 
+      success: false, 
+      error: error instanceof Error ? error.message : 'Unknown error' 
+    });
+  }
+});
+
+// Increment property view count
+app.post('/api/properties/:id/view', async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+
+    // First get current view count
+    const { data: currentData, error: fetchError } = await supabase
+      .from('properties')
+      .select('view_count')
+      .eq('id', id)
+      .single();
+
+    if (fetchError) throw fetchError;
+
+    // Increment and update
+    const newViewCount = (currentData?.view_count || 0) + 1;
+
+    const { data, error } = await supabase
+      .from('properties')
+      .update({ view_count: newViewCount })
+      .eq('id', id)
+      .select()
+      .single();
+
+    if (error) throw error;
+
+    res.json({ success: true, data });
+  } catch (error) {
+    console.error('Error incrementing view count:', error);
     res.status(500).json({ 
       success: false, 
       error: error instanceof Error ? error.message : 'Unknown error' 
@@ -193,19 +326,42 @@ app.delete('/api/properties/:id', async (req: Request, res: Response) => {
 });
 
 // Get all leases
-app.get('/api/leases', async (_req: Request, res: Response) => {
+app.get('/api/leases', async (req: Request, res: Response) => {
   try {
-    const { data, error } = await supabase
+    const { manager_id } = req.query;
+
+    console.log('📋 [Leases] Manager ID:', manager_id || 'ALL');
+
+    let query = supabase
       .from('leases')
       .select(`
         *,
         property:properties(*),
         tenant:users(*)
-      `)
-      .order('created_at', { ascending: false });
+      `);
+
+    // Filter by manager's properties if manager_id provided
+    if (manager_id) {
+      const { data: managerProps } = await supabase
+        .from('properties')
+        .select('id')
+        .eq('owner_id', manager_id);
+      
+      const propertyIds = managerProps?.map(p => p.id) || [];
+      
+      if (propertyIds.length > 0) {
+        query = query.in('property_id', propertyIds);
+      } else {
+        // Manager has no properties, return empty
+        query = query.eq('property_id', 'NONE');
+      }
+    }
+
+    const { data, error } = await query.order('created_at', { ascending: false });
 
     if (error) throw error;
 
+    console.log('✅ [Leases] Returned', data?.length || 0, 'leases');
     res.json({ success: true, data });
   } catch (error) {
     console.error('Error fetching leases:', error);
@@ -217,9 +373,15 @@ app.get('/api/leases', async (_req: Request, res: Response) => {
 });
 
 // Get lease by ID
-app.get('/api/leases/:id', async (req: Request, res: Response) => {
+// REMOVED: Duplicate route - see comprehensive version at line ~2960
+
+// Get lease by application ID
+app.get('/api/leases/by-application/:applicationId', async (req: Request, res: Response) => {
   try {
-    const { id } = req.params;
+    const { applicationId } = req.params;
+    
+    console.log('🔍 [Get Lease by Application] Application ID:', applicationId);
+    
     const { data, error } = await supabase
       .from('leases')
       .select(`
@@ -227,14 +389,22 @@ app.get('/api/leases/:id', async (req: Request, res: Response) => {
         property:properties(*),
         tenant:users(*)
       `)
-      .eq('id', id)
+      .eq('application_id', applicationId)
       .single();
 
-    if (error) throw error;
+    if (error) {
+      if (error.code === 'PGRST116') {
+        // No lease found - this is okay, not an error
+        console.log('ℹ️ [Get Lease by Application] No lease found for this application');
+        return res.json({ success: true, data: null });
+      }
+      throw error;
+    }
 
+    console.log('✅ [Get Lease by Application] Lease found:', data.id);
     res.json({ success: true, data });
   } catch (error) {
-    console.error('Error fetching lease:', error);
+    console.error('❌ Error fetching lease by application:', error);
     res.status(500).json({ 
       success: false, 
       error: error instanceof Error ? error.message : 'Unknown error' 
@@ -284,6 +454,39 @@ app.post('/api/leases', async (req: Request, res: Response) => {
       .single();
 
     if (error) throw error;
+
+    // Store lease hash on blockchain if wallet addresses available
+    if (data.manager_wallet_address && data.tenant_wallet_address) {
+      console.log('🔗 [Blockchain] Storing lease on-chain...');
+      const blockchainResult = await solanaLeaseService.createLeaseOnChain({
+        id: data.id,
+        propertyId: data.property_id,
+        managerId: data.property.owner_id,
+        tenantId: data.tenant_id,
+        managerWallet: data.manager_wallet_address,
+        tenantWallet: data.tenant_wallet_address,
+        monthlyRent: parseFloat(data.monthly_rent_usdc),
+        securityDeposit: parseFloat(data.security_deposit_usdc),
+        startDate: data.start_date,
+        endDate: data.end_date
+      });
+
+      if (blockchainResult.success) {
+        // Update lease with blockchain info
+        await supabase
+          .from('leases')
+          .update({
+            blockchain_tx_hash: blockchainResult.transactionHash,
+            lease_hash: blockchainResult.leaseHash,
+            on_chain: true
+          })
+          .eq('id', data.id);
+        
+        console.log('✅ [Blockchain] Lease stored on-chain:', blockchainResult.transactionHash);
+      } else {
+        console.warn('⚠️ [Blockchain] Failed to store lease on-chain:', blockchainResult.error);
+      }
+    }
 
     res.status(201).json({ success: true, data });
   } catch (error) {
@@ -377,17 +580,40 @@ app.delete('/api/leases/:id', async (req: Request, res: Response) => {
 // Get maintenance requests
 app.get('/api/maintenance', async (req: Request, res: Response) => {
   try {
-    const { data, error } = await supabase
+    const { manager_id } = req.query;
+
+    console.log('🔧 [Maintenance] Manager ID:', manager_id || 'ALL');
+
+    let query = supabase
       .from('maintenance_requests')
       .select(`
         *,
         property:properties(*),
         requestor:users(*)
-      `)
-      .order('created_at', { ascending: false });
+      `);
+
+    // Filter by manager's properties if manager_id provided
+    if (manager_id) {
+      const { data: managerProps } = await supabase
+        .from('properties')
+        .select('id')
+        .eq('owner_id', manager_id);
+      
+      const propertyIds = managerProps?.map(p => p.id) || [];
+      
+      if (propertyIds.length > 0) {
+        query = query.in('property_id', propertyIds);
+      } else {
+        // Manager has no properties, return empty
+        query = query.eq('property_id', 'NONE');
+      }
+    }
+
+    const { data, error } = await query.order('created_at', { ascending: false });
 
     if (error) throw error;
 
+    console.log('✅ [Maintenance] Returned', data?.length || 0, 'requests');
     res.json({ success: true, data });
   } catch (error) {
     console.error('Error fetching maintenance requests:', error);
@@ -732,7 +958,11 @@ app.post('/api/maintenance/:id/ai-analysis', async (req: Request, res: Response)
 // Get rent payments
 app.get('/api/payments', async (req: Request, res: Response) => {
   try {
-    const { data, error } = await supabase
+    const { manager_id } = req.query;
+
+    console.log('💳 [Payments] Manager ID:', manager_id || 'ALL');
+
+    let query = supabase
       .from('rent_payments')
       .select(`
         *,
@@ -741,12 +971,45 @@ app.get('/api/payments', async (req: Request, res: Response) => {
           property:properties(*)
         ),
         tenant:users(*)
-      `)
+      `);
+
+    // Filter by manager's leases if manager_id provided
+    if (manager_id) {
+      const { data: managerProps } = await supabase
+        .from('properties')
+        .select('id')
+        .eq('owner_id', manager_id);
+      
+      const propertyIds = managerProps?.map(p => p.id) || [];
+      
+      if (propertyIds.length > 0) {
+        // Get leases for these properties
+        const { data: managerLeases } = await supabase
+          .from('leases')
+          .select('id')
+          .in('property_id', propertyIds);
+        
+        const leaseIds = managerLeases?.map(l => l.id) || [];
+        
+        if (leaseIds.length > 0) {
+          query = query.in('lease_id', leaseIds);
+        } else {
+          // Manager has no leases, return empty
+          query = query.eq('lease_id', 'NONE');
+        }
+      } else {
+        // Manager has no properties, return empty
+        query = query.eq('lease_id', 'NONE');
+      }
+    }
+
+    const { data, error } = await query
       .order('payment_date', { ascending: false })
       .limit(50);
 
     if (error) throw error;
 
+    console.log('✅ [Payments] Returned', data?.length || 0, 'payments');
     res.json({ success: true, data });
   } catch (error) {
     console.error('Error fetching payments:', error);
@@ -794,7 +1057,7 @@ app.get('/api/leases/:leaseId/payments', async (req: Request, res: Response) => 
       .from('rent_payments')
       .select('*')
       .eq('lease_id', leaseId)
-      .order('payment_date', { ascending: false });
+      .order('created_at', { ascending: false });
 
     if (error) throw error;
 
@@ -961,6 +1224,8 @@ app.post('/api/payments/:id/complete', async (req: Request, res: Response) => {
     const { id } = req.params;
     const { transaction_hash } = req.body;
 
+    console.log('💳 [Payment Complete] Marking payment as completed:', id);
+
     const { data, error } = await supabase
       .from('rent_payments')
       .update({ 
@@ -969,38 +1234,82 @@ app.post('/api/payments/:id/complete', async (req: Request, res: Response) => {
         payment_date: new Date().toISOString()
       })
       .eq('id', id)
-      .select(`
-        *,
-        lease:leases(
-          *,
-          property:properties(*)
-        ),
-        tenant:users(*)
-      `)
+      .select('*')
       .single();
 
-    if (error) throw error;
+    if (error) {
+      console.error('❌ [Payment Complete] Error updating payment:', error);
+      throw error;
+    }
 
-    // Update lease total_paid
-    if (data.lease_id) {
-      const { data: lease } = await supabase
+    console.log('✅ [Payment Complete] Payment marked as completed:', data);
+
+    // Check if all required payments are now complete
+    const { data: allPayments } = await supabase
+      .from('rent_payments')
+      .select('*')
+      .eq('lease_id', data.lease_id)
+      .in('payment_type', ['security_deposit', 'rent']);
+
+    const allComplete = allPayments?.every(p => p.status === 'completed');
+
+    console.log('💰 [Payment Complete] Payment status check:', {
+      totalPayments: allPayments?.length,
+      allComplete,
+      payments: allPayments?.map(p => ({ type: p.payment_type, status: p.status }))
+    });
+
+    // If all required payments are complete, auto-activate lease
+    if (allComplete && allPayments && allPayments.length >= 2) {
+      console.log('🎉 [Payment Complete] All payments complete! Auto-activating lease...');
+      
+      // Update lease status to active
+      const { error: activateError } = await supabase
         .from('leases')
-        .select('total_paid_usdc')
-        .eq('id', data.lease_id)
-        .single();
+        .update({
+          lease_status: 'active',
+          status: 'active',
+          activated_at: new Date().toISOString()
+        })
+        .eq('id', data.lease_id);
 
-      if (lease) {
-        await supabase
+      if (activateError) {
+        console.error('❌ [Payment Complete] Error activating lease:', activateError);
+      } else {
+        console.log('✅ [Payment Complete] Lease activated!');
+
+        // Get lease to find tenant_id
+        const { data: lease } = await supabase
           .from('leases')
-          .update({ 
-            total_paid_usdc: (lease.total_paid_usdc || 0) + parseFloat(data.amount_usdc),
-            last_payment_date: new Date().toISOString()
-          })
-          .eq('id', data.lease_id);
+          .select('tenant_id')
+          .eq('id', data.lease_id)
+          .single();
+
+        if (lease) {
+          // Transition user from prospective_tenant to tenant
+          const { error: roleError } = await supabase
+            .from('users')
+            .update({
+              role: 'tenant',
+              user_type: 'tenant'
+            })
+            .eq('id', lease.tenant_id);
+
+          if (roleError) {
+            console.error('❌ [Payment Complete] Error updating user role:', roleError);
+          } else {
+            console.log('✅ [Payment Complete] User role updated to tenant!');
+          }
+        }
       }
     }
 
-    res.json({ success: true, data, message: 'Payment completed successfully' });
+    res.json({ 
+      success: true, 
+      data, 
+      message: 'Payment completed successfully',
+      lease_activated: allComplete && allPayments && allPayments.length >= 2
+    });
   } catch (error) {
     console.error('Error completing payment:', error);
     res.status(500).json({ 
@@ -1146,6 +1455,8 @@ app.post('/api/payments/:id/initiate-transfer', async (req: Request, res: Respon
       .update({
         status: 'processing',
         transaction_hash: transferResult.transactionHash,
+        blockchain_tx_hash: transferResult.transactionHash,
+        on_chain: true,
         updated_at: new Date().toISOString()
       })
       .eq('id', id)
@@ -1408,41 +1719,86 @@ app.post('/api/payments/bulk-complete', async (req: Request, res: Response) => {
 // Get dashboard stats
 app.get('/api/dashboard/stats', async (req: Request, res: Response) => {
   try {
-    // Get properties count
-    const { count: propertiesCount, error: propError } = await supabase
+    const { manager_id } = req.query;
+
+    console.log('📊 [Dashboard Stats] Manager ID:', manager_id || 'ALL');
+
+    // Get properties count (filtered by manager if provided)
+    let propertiesQuery = supabase
       .from('properties')
       .select('*', { count: 'exact', head: true })
       .eq('is_active', true);
+    
+    if (manager_id) {
+      propertiesQuery = propertiesQuery.eq('owner_id', manager_id);
+    }
+    
+    const { count: propertiesCount, error: propError } = await propertiesQuery;
 
     if (propError) {
       console.error('Properties count error:', propError);
     }
 
-    // Get active leases count
-    const { count: leasesCount, error: leaseError } = await supabase
+    // Get manager's property IDs for filtering other stats
+    let managerPropertyIds: string[] = [];
+    if (manager_id) {
+      const { data: managerProps } = await supabase
+        .from('properties')
+        .select('id')
+        .eq('owner_id', manager_id);
+      managerPropertyIds = managerProps?.map(p => p.id) || [];
+    }
+
+    // Get active leases count (only for manager's properties)
+    let leasesQuery = supabase
       .from('leases')
       .select('*', { count: 'exact', head: true })
       .eq('status', 'active');
+    
+    if (manager_id && managerPropertyIds.length > 0) {
+      leasesQuery = leasesQuery.in('property_id', managerPropertyIds);
+    } else if (manager_id && managerPropertyIds.length === 0) {
+      // Manager has no properties, so no leases
+      leasesQuery = leasesQuery.eq('property_id', 'NONE');
+    }
+
+    const { count: leasesCount, error: leaseError } = await leasesQuery;
 
     if (leaseError) {
       console.error('Leases count error:', leaseError);
     }
 
-    // Get pending maintenance count
-    const { count: maintenanceCount, error: maintError } = await supabase
+    // Get pending maintenance count (only for manager's properties)
+    let maintenanceQuery = supabase
       .from('maintenance_requests')
       .select('*', { count: 'exact', head: true })
       .eq('status', 'pending');
+    
+    if (manager_id && managerPropertyIds.length > 0) {
+      maintenanceQuery = maintenanceQuery.in('property_id', managerPropertyIds);
+    } else if (manager_id && managerPropertyIds.length === 0) {
+      maintenanceQuery = maintenanceQuery.eq('property_id', 'NONE');
+    }
+
+    const { count: maintenanceCount, error: maintError } = await maintenanceQuery;
 
     if (maintError) {
       console.error('Maintenance count error:', maintError);
     }
 
-    // Get total revenue from completed payments
-    const { data: payments, error: payError } = await supabase
+    // Get total revenue from completed payments (only for manager's leases)
+    let paymentsQuery = supabase
       .from('rent_payments')
-      .select('amount_usdc')
+      .select('amount_usdc, lease:leases!inner(property_id)')
       .eq('status', 'completed');
+    
+    if (manager_id && managerPropertyIds.length > 0) {
+      paymentsQuery = paymentsQuery.in('lease.property_id', managerPropertyIds);
+    } else if (manager_id && managerPropertyIds.length === 0) {
+      paymentsQuery = paymentsQuery.eq('lease.property_id', 'NONE');
+    }
+
+    const { data: payments, error: payError } = await paymentsQuery;
 
     if (payError) {
       console.error('Payments error:', payError);
@@ -1450,7 +1806,8 @@ app.get('/api/dashboard/stats', async (req: Request, res: Response) => {
 
     const totalRevenue = payments?.reduce((sum, p: any) => sum + parseFloat(p.amount_usdc || 0), 0) || 0;
 
-    console.log('Dashboard Stats:', {
+    console.log('📊 [Dashboard Stats] Results:', {
+      manager: manager_id || 'ALL',
       properties: propertiesCount,
       leases: leasesCount,
       maintenance: maintenanceCount,
@@ -2477,17 +2834,26 @@ app.post('/api/applications', async (req: Request, res: Response) => {
       }
     );
 
+    // Prepare data for insertion, renaming 'references' to 'applicant_references' to avoid SQL keyword conflict
+    const dbData: any = {
+      ...applicationData,
+      ai_compatibility_score: scoring.compatibilityScore,
+      ai_risk_score: scoring.riskScore,
+      ai_analysis: scoring.analysis,
+      status: 'submitted',
+      created_at: new Date().toISOString()
+    };
+    
+    // Rename 'references' to 'applicant_references' to avoid SQL reserved keyword
+    if (dbData.references) {
+      dbData.applicant_references = dbData.references;
+      delete dbData.references;
+    }
+
     // Create application with AI scores
     const { data, error } = await supabase
       .from('property_applications')
-      .insert([{
-        ...applicationData,
-        ai_compatibility_score: scoring.compatibilityScore,
-        ai_risk_score: scoring.riskScore,
-        ai_analysis: scoring.analysis,
-        status: 'submitted',
-        created_at: new Date().toISOString()
-      }])
+      .insert([dbData])
       .select()
       .single();
 
@@ -2511,10 +2877,77 @@ app.post('/api/applications', async (req: Request, res: Response) => {
   }
 });
 
+// Get all applications (Manager view - all applications across all properties)
+app.get('/api/applications', async (req: Request, res: Response) => {
+  try {
+    const { manager_id } = req.query;
+    
+    console.log('📋 [Applications] Manager ID:', manager_id || 'ALL');
+
+    let query = supabase
+      .from('property_applications')
+      .select(`
+        *,
+        properties!property_id(*),
+        users!applicant_id(*)
+      `);
+
+    // Filter by manager's properties if manager_id provided
+    if (manager_id) {
+      const { data: managerProps } = await supabase
+        .from('properties')
+        .select('id')
+        .eq('owner_id', manager_id);
+      
+      const propertyIds = managerProps?.map(p => p.id) || [];
+      
+      if (propertyIds.length > 0) {
+        query = query.in('property_id', propertyIds);
+      } else {
+        // Manager has no properties, return empty
+        query = query.eq('property_id', 'NONE');
+      }
+    }
+
+    const { data, error } = await query.order('created_at', { ascending: false });
+
+    if (error) {
+      console.error('❌ Error from Supabase:', error);
+      throw error;
+    }
+
+    console.log(`✅ [Applications] Found ${data?.length || 0} applications`);
+    
+    // Transform data to match frontend expectations
+    const transformedData = data?.map(app => ({
+      ...app,
+      property: app.properties || null,
+      applicant: app.users || null
+    })) || [];
+    
+    res.json({ success: true, data: transformedData });
+  } catch (error) {
+    console.error('❌ Error fetching all applications:', error);
+    // Log the full error object to see all details
+    console.error('Full error object:', JSON.stringify(error, null, 2));
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+    console.error('Error details:', errorMessage);
+    
+    res.status(500).json({ 
+      success: false, 
+      error: errorMessage,
+      fullError: error,
+      hint: 'Did you run the database migration? Table property_applications might not exist.'
+    });
+  }
+});
+
 // Get user's applications
 app.get('/api/applications/my-applications', async (req: Request, res: Response) => {
   try {
     const { user_id } = req.query;
+
+    console.log('🔍 [My Applications] Fetching applications for user:', user_id);
 
     if (!user_id) {
       return res.status(400).json({
@@ -2527,17 +2960,35 @@ app.get('/api/applications/my-applications', async (req: Request, res: Response)
       .from('property_applications')
       .select(`
         *,
-        property:properties(*),
-        applicant:users(*)
+        properties!property_id(*),
+        users!applicant_id(*)
       `)
       .eq('applicant_id', user_id)
       .order('created_at', { ascending: false });
 
-    if (error) throw error;
+    if (error) {
+      console.error('❌ [My Applications] Supabase error:', error);
+      throw error;
+    }
 
-    res.json({ success: true, data });
+    console.log(`✅ [My Applications] Found ${data?.length || 0} applications`);
+    if (data && data.length > 0) {
+      console.log('📦 [My Applications] Sample application structure:', {
+        id: data[0].id,
+        hasProperty: !!data[0].properties,
+        propertyKeys: data[0].properties ? Object.keys(data[0].properties) : 'NO PROPERTY DATA'
+      });
+    }
+
+    // Transform the data to match frontend expectations
+    const transformedData = data?.map(app => ({
+      ...app,
+      property: app.properties || null // Ensure property field exists
+    })) || [];
+
+    res.json({ success: true, data: transformedData });
   } catch (error) {
-    console.error('Error fetching user applications:', error);
+    console.error('❌ [My Applications] Error fetching user applications:', error);
     res.status(500).json({ 
       success: false, 
       error: error instanceof Error ? error.message : 'Unknown error' 
@@ -2554,8 +3005,8 @@ app.get('/api/applications/property/:propertyId', async (req: Request, res: Resp
       .from('property_applications')
       .select(`
         *,
-        property:properties(*),
-        applicant:users(*)
+        properties!property_id(*),
+        users!applicant_id(*)
       `)
       .eq('property_id', propertyId)
       .order('ai_compatibility_score', { ascending: false });
@@ -2578,8 +3029,16 @@ app.put('/api/applications/:id/status', async (req: Request, res: Response) => {
     const { id } = req.params;
     const { status, manager_notes, reviewed_by } = req.body;
 
+    console.log('📝 [Update Application Status] Request:', {
+      id,
+      status,
+      has_notes: !!manager_notes,
+      reviewed_by
+    });
+
     const validStatuses = ['submitted', 'under_review', 'approved', 'rejected', 'withdrawn', 'lease_signed'];
     if (!validStatuses.includes(status)) {
+      console.error('❌ Invalid status:', status);
       return res.status(400).json({
         success: false,
         error: `Invalid status. Must be one of: ${validStatuses.join(', ')}`
@@ -2600,25 +3059,737 @@ app.put('/api/applications/:id/status', async (req: Request, res: Response) => {
       updates.reviewed_at = new Date().toISOString();
     }
 
-    const { data, error } = await supabase
+    console.log('📤 Sending update to Supabase:', updates);
+
+    // First, do a simple update without joins
+    const { data: updateData, error: updateError } = await supabase
       .from('property_applications')
       .update(updates)
       .eq('id', id)
+      .select()
+      .single();
+
+    if (updateError) {
+      console.error('❌ Supabase update error:', updateError);
+      throw updateError;
+    }
+
+    console.log('✅ Basic update successful, now fetching with joins...');
+
+    // Then fetch with joins for the response
+    const { data, error } = await supabase
+      .from('property_applications')
+      .select(`
+        *,
+        properties!property_id(*),
+        users!applicant_id(*)
+      `)
+      .eq('id', id)
+      .single();
+
+    if (error) {
+      console.error('❌ Supabase fetch error:', error);
+      // Return the update data even if fetch fails
+      console.log('⚠️ Returning basic data without joins');
+      return res.json({ success: true, data: updateData, message: `Application ${status}` });
+    }
+
+    console.log('✅ Application status updated successfully with joins');
+    res.json({ success: true, data, message: `Application ${status}` });
+  } catch (error) {
+    console.error('❌ Error updating application status:', error);
+    res.status(500).json({ 
+      success: false, 
+      error: error instanceof Error ? error.message : 'Unknown error',
+      details: error // Include full error details for debugging
+    });
+  }
+});
+
+// =====================================
+// LEASE MANAGEMENT
+// =====================================
+
+// Generate lease from approved application
+app.post('/api/leases/generate', async (req: Request, res: Response) => {
+  try {
+    const { application_id } = req.body;
+
+    console.log('📝 [Generate Lease] Request for application:', application_id);
+
+    if (!application_id) {
+      return res.status(400).json({
+        success: false,
+        error: 'Application ID is required'
+      });
+    }
+
+    // Get application details with property and applicant info
+    console.log('📤 Fetching application with ID:', application_id);
+    const { data: application, error: appError } = await supabase
+      .from('property_applications')
+      .select(`
+        *,
+        properties!property_id(*),
+        users!applicant_id(*)
+      `)
+      .eq('id', application_id)
+      .single();
+
+    if (appError || !application) {
+      console.error('❌ Application not found:', appError);
+      console.error('❌ Error details:', JSON.stringify(appError, null, 2));
+      return res.status(404).json({
+        success: false,
+        error: 'Application not found',
+        details: appError
+      });
+    }
+
+    console.log('✅ Application found:', application.id);
+    console.log('   Property:', application.properties?.title);
+    console.log('   Applicant:', application.users?.full_name);
+
+    // Verify application is approved
+    if (application.status !== 'approved') {
+      return res.status(400).json({
+        success: false,
+        error: 'Only approved applications can generate leases'
+      });
+    }
+
+    // Check if lease already exists for this application
+    const { data: existingLease } = await supabase
+      .from('leases')
+      .select('*')
+      .eq('application_id', application_id)
+      .single();
+
+    if (existingLease) {
+      console.log('ℹ️ Lease already exists for this application');
+      return res.json({
+        success: true,
+        data: existingLease,
+        message: 'Lease already exists for this application'
+      });
+    }
+
+    // Calculate lease dates
+    const startDate = new Date(application.requested_move_in_date);
+    const endDate = new Date(startDate);
+    endDate.setFullYear(endDate.getFullYear() + 1); // Default 1-year lease
+
+    // Get property details
+    const property = application.properties;
+    const tenant = application.users;
+
+    // Generate lease terms
+    const leaseTerms = {
+      propertyAddress: `${property.address}, ${property.city}, ${property.state} ${property.zip_code}`,
+      tenantName: tenant.full_name,
+      tenantEmail: tenant.email,
+      landlordName: 'RentFlow Property Management',
+      monthlyRent: property.monthly_rent_usdc,
+      securityDeposit: property.security_deposit_usdc,
+      leaseDuration: '12 months',
+      startDate: startDate.toISOString().split('T')[0],
+      endDate: endDate.toISOString().split('T')[0],
+      rentDueDay: 1,
+      lateFeeAmount: property.monthly_rent_usdc * 0.05, // 5% late fee
+      lateFeeGracePeriod: 5, // days
+      propertyDetails: {
+        bedrooms: property.bedrooms,
+        bathrooms: property.bathrooms,
+        squareFeet: property.square_feet,
+        propertyType: property.property_type,
+        amenities: property.amenities
+      },
+      standardClauses: [
+        'Tenant agrees to maintain the property in good condition',
+        'No subletting without written permission from landlord',
+        'Tenant responsible for all utilities unless otherwise specified',
+        'Property to be used for residential purposes only',
+        'Landlord reserves right to inspect property with 24-hour notice',
+        'Security deposit refundable within 30 days of lease termination',
+        'Early termination requires 60-day written notice'
+      ]
+    };
+
+    // Create special terms from application data
+    const specialTerms: any = {};
+    
+    if (application.has_pets) {
+      specialTerms.petPolicy = 'Pet allowed as disclosed in application. Additional pet deposit required.';
+    }
+    
+    if (property.amenities?.includes('parking')) {
+      specialTerms.parking = 'One parking spot included with rental';
+    }
+
+    // Create lease record
+    const { data: lease, error: leaseError } = await supabase
+      .from('leases')
+      .insert([{
+        application_id: application_id,
+        property_id: application.property_id,
+        tenant_id: application.applicant_id,
+        start_date: startDate.toISOString().split('T')[0],
+        end_date: endDate.toISOString().split('T')[0],
+        monthly_rent_usdc: property.monthly_rent_usdc,
+        security_deposit_usdc: property.security_deposit_usdc,
+        rent_due_day: 1,
+        lease_status: 'pending_tenant',
+        status: 'pending',
+        lease_terms: leaseTerms,
+        special_terms: specialTerms,
+        generated_at: new Date().toISOString()
+      }])
+      .select()
+      .single();
+
+    if (leaseError) {
+      console.error('❌ Error creating lease:', leaseError);
+      throw leaseError;
+    }
+
+    console.log('✅ Lease generated successfully:', lease.id);
+
+    res.status(201).json({
+      success: true,
+      data: lease,
+      message: 'Lease generated successfully'
+    });
+  } catch (error) {
+    console.error('❌ Error generating lease:', error);
+    res.status(500).json({
+      success: false,
+      error: error instanceof Error ? error.message : 'Unknown error'
+    });
+  }
+});
+
+// Get lease by ID
+app.get('/api/leases/:id', async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+
+    const { data: lease, error } = await supabase
+      .from('leases')
       .select(`
         *,
         property:properties(*),
-        applicant:users(*)
+        tenant:users!tenant_id(*),
+        application:property_applications(*)
       `)
+      .eq('id', id)
       .single();
+
+    if (error || !lease) {
+      return res.status(404).json({
+        success: false,
+        error: 'Lease not found'
+      });
+    }
+
+    res.json({ success: true, data: lease });
+  } catch (error) {
+    console.error('❌ Error fetching lease:', error);
+    res.status(500).json({
+      success: false,
+      error: error instanceof Error ? error.message : 'Unknown error'
+    });
+  }
+});
+
+// Get leases for a tenant
+app.get('/api/leases/tenant/:tenantId', async (req: Request, res: Response) => {
+  try {
+    const { tenantId } = req.params;
+
+    const { data: leases, error } = await supabase
+      .from('leases')
+      .select(`
+        *,
+        property:properties(*),
+        application:property_applications(*)
+      `)
+      .eq('tenant_id', tenantId)
+      .order('created_at', { ascending: false });
 
     if (error) throw error;
 
-    res.json({ success: true, data, message: `Application ${status}` });
+    res.json({ success: true, data: leases || [] });
   } catch (error) {
-    console.error('Error updating application status:', error);
-    res.status(500).json({ 
-      success: false, 
-      error: error instanceof Error ? error.message : 'Unknown error' 
+    console.error('❌ Error fetching tenant leases:', error);
+    res.status(500).json({
+      success: false,
+      error: error instanceof Error ? error.message : 'Unknown error'
+    });
+  }
+});
+
+// Circle Wallet: Get wallet for user
+app.get('/api/circle/wallet/:userId', async (req: Request, res: Response) => {
+  try {
+    const { userId } = req.params;
+    const { role } = req.query;
+
+    if (!role || (role !== 'manager' && role !== 'tenant')) {
+      return res.status(400).json({
+        success: false,
+        error: 'role query parameter required (manager or tenant)'
+      });
+    }
+
+    console.log('💼 [Circle Wallet] Getting wallet for user:', userId, 'role:', role);
+
+    // Get or create wallet with REAL address from Circle API
+    const walletInfo = await circleSigningService.getOrCreateUserWallet(
+      userId, 
+      role as 'manager' | 'tenant'
+    );
+
+    if (walletInfo.error) {
+      return res.status(500).json({
+        success: false,
+        error: walletInfo.error
+      });
+    }
+
+    console.log('✅ [Circle Wallet] Returning real wallet:', {
+      walletId: walletInfo.walletId,
+      address: walletInfo.address
+    });
+
+    res.json({
+      success: true,
+      data: {
+        walletId: walletInfo.walletId,
+        address: walletInfo.address,  // REAL Solana address
+        userId,
+        role
+      }
+    });
+  } catch (error) {
+    console.error('❌ Error getting Circle wallet:', error);
+    res.status(500).json({
+      success: false,
+      error: error instanceof Error ? error.message : 'Unknown error'
+    });
+  }
+});
+
+// Circle Wallet: Sign message
+app.post('/api/circle/sign-message', async (req: Request, res: Response) => {
+  try {
+    const { walletId, message } = req.body;
+
+    if (!walletId || !message) {
+      return res.status(400).json({
+        success: false,
+        error: 'walletId and message are required'
+      });
+    }
+
+    console.log('🔐 [Circle Sign] Request to sign message with wallet:', walletId);
+
+    const result = await circleSigningService.signMessageWithCircleWallet(walletId, message);
+
+    if (!result.success) {
+      return res.status(500).json(result);
+    }
+
+    res.json(result);
+  } catch (error) {
+    console.error('❌ Error signing message with Circle:', error);
+    res.status(500).json({
+      success: false,
+      error: error instanceof Error ? error.message : 'Unknown error'
+    });
+  }
+});
+
+// Sign lease (tenant or landlord)
+app.post('/api/leases/:id/sign', async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    const { 
+      signer_id, 
+      signature, 
+      signer_type,
+      wallet_address,  // NEW: Real wallet address for payment routing
+      wallet_type,     // NEW: 'phantom' or 'circle'
+      wallet_id        // NEW: Circle wallet ID (if using Circle)
+    } = req.body;
+
+    console.log('✍️ [Sign Lease] Request:', { 
+      id, 
+      signer_id, 
+      signer_type,
+      wallet_address,
+      wallet_type 
+    });
+
+    if (!signer_id || !signature || !signer_type) {
+      return res.status(400).json({
+        success: false,
+        error: 'signer_id, signature, and signer_type are required'
+      });
+    }
+
+    if (!['tenant', 'landlord'].includes(signer_type)) {
+      return res.status(400).json({
+        success: false,
+        error: 'signer_type must be either "tenant" or "landlord"'
+      });
+    }
+
+    // Get current lease
+    const { data: lease, error: fetchError } = await supabase
+      .from('leases')
+      .select('*')
+      .eq('id', id)
+      .single();
+
+    if (fetchError || !lease) {
+      return res.status(404).json({
+        success: false,
+        error: 'Lease not found'
+      });
+    }
+
+    // Prepare update data
+    const updates: any = {};
+    let newLeaseStatus = lease.lease_status;
+
+    if (signer_type === 'tenant') {
+      // Verify signer is the tenant
+      if (signer_id !== lease.tenant_id) {
+        return res.status(403).json({
+          success: false,
+          error: 'Only the tenant can sign as tenant'
+        });
+      }
+
+      updates.tenant_signature = signature;
+      updates.tenant_signature_date = new Date().toISOString();
+      
+      // Store tenant wallet info for payment routing
+      if (wallet_address) {
+        updates.tenant_wallet_address = wallet_address;
+        updates.tenant_wallet_type = wallet_type || 'phantom';
+        if (wallet_id) {
+          updates.tenant_wallet_id = wallet_id;
+        }
+        console.log('💳 [Wallet] Tenant wallet stored:', { wallet_address, wallet_type });
+      }
+      
+      // If landlord already signed, lease is fully signed
+      if (lease.landlord_signature) {
+        newLeaseStatus = 'fully_signed';
+      } else {
+        newLeaseStatus = 'pending_landlord';
+      }
+    } else {
+      // Landlord signing
+      updates.landlord_signature = signature;
+      updates.landlord_signature_date = new Date().toISOString();
+      
+      // Store manager wallet info for receiving payments
+      if (wallet_address) {
+        updates.manager_wallet_address = wallet_address;
+        updates.manager_wallet_type = wallet_type || 'phantom';
+        if (wallet_id) {
+          updates.manager_wallet_id = wallet_id;
+        }
+        console.log('💰 [Wallet] Manager wallet stored:', { wallet_address, wallet_type });
+      }
+      
+      // If tenant already signed, lease is fully signed
+      if (lease.tenant_signature) {
+        newLeaseStatus = 'fully_signed';
+      } else {
+        newLeaseStatus = 'pending_tenant';
+      }
+    }
+
+    updates.lease_status = newLeaseStatus;
+
+    // Update lease
+    const { data: updatedLease, error: updateError } = await supabase
+      .from('leases')
+      .update(updates)
+      .eq('id', id)
+      .select()
+      .single();
+
+    if (updateError) throw updateError;
+
+    console.log(`✅ Lease signed by ${signer_type}. New status: ${newLeaseStatus}`);
+
+    // Store signature on blockchain
+    if (wallet_address && solanaLeaseService.isReady()) {
+      console.log('🔗 [Blockchain] Recording signature on-chain...');
+      const signatureResult = await solanaLeaseService.signLeaseOnChain({
+        leaseId: id,
+        signerWallet: wallet_address,
+        signature,
+        signedAt: new Date().toISOString()
+      });
+
+      if (signatureResult.success) {
+        // Update lease with blockchain signature transaction
+        const txHashField = signer_type === 'tenant' 
+          ? 'tenant_signature_tx_hash' 
+          : 'manager_signature_tx_hash';
+        
+        await supabase
+          .from('leases')
+          .update({ [txHashField]: signatureResult.transactionHash })
+          .eq('id', id);
+        
+        console.log('✅ [Blockchain] Signature recorded on-chain:', signatureResult.transactionHash);
+      } else {
+        console.warn('⚠️ [Blockchain] Failed to record signature on-chain:', signatureResult.error);
+      }
+    }
+
+    // If lease is now fully signed, create initial payment records
+    if (newLeaseStatus === 'fully_signed') {
+      console.log('🚀 [Payment Setup] Lease fully signed, creating initial payment records...');
+      
+      try {
+        // AUTO-MIGRATE CHAT: Move application chat to lease
+        if (lease.application_id) {
+          console.log('🔄 [Chat Migration] Auto-migrating application chat to lease...');
+          const { data: migratedMessages, error: migrationError } = await supabase
+            .from('messages')
+            .update({ lease_id: id })
+            .eq('application_id', lease.application_id)
+            .select();
+
+          if (migrationError) {
+            console.error('❌ Error migrating chat:', migrationError);
+          } else {
+            console.log(`✅ Migrated ${migratedMessages?.length || 0} messages from application to lease`);
+          }
+        }
+
+        // Create security deposit payment
+        const { error: securityError } = await supabase
+          .from('rent_payments')
+          .insert({
+            lease_id: id,
+            tenant_id: lease.tenant_id,
+            amount_usdc: lease.security_deposit_usdc,
+            payment_type: 'security_deposit',
+            due_date: new Date().toISOString().split('T')[0],
+            status: 'pending',
+            notes: 'Initial security deposit payment required for lease activation',
+            blockchain_network: 'solana'
+          });
+
+        if (securityError) {
+          console.error('❌ Error creating security deposit payment:', securityError);
+        } else {
+          console.log('✅ Security deposit payment record created');
+        }
+
+        // Create first month's rent payment
+        const { error: rentError } = await supabase
+          .from('rent_payments')
+          .insert({
+            lease_id: id,
+            tenant_id: lease.tenant_id,
+            amount_usdc: lease.monthly_rent_usdc,
+            payment_type: 'rent',
+            due_date: lease.start_date,
+            status: 'pending',
+            notes: 'First month rent payment required for lease activation',
+            blockchain_network: 'solana'
+          });
+
+        if (rentError) {
+          console.error('❌ Error creating rent payment:', rentError);
+        } else {
+          console.log('✅ First month rent payment record created');
+        }
+
+        // Get updated lease with new status
+        const { data: leasWithPayments } = await supabase
+          .from('leases')
+          .select('*')
+          .eq('id', id)
+          .single();
+
+        res.json({
+          success: true,
+          data: leasWithPayments || updatedLease,
+          message: `Lease signed by ${signer_type} successfully. Please complete initial payments to activate lease.`,
+          requires_payment: true,
+          chat_migrated: !!lease.application_id,
+          payment_info: {
+            security_deposit: lease.security_deposit_usdc,
+            first_month_rent: lease.monthly_rent_usdc,
+            total: lease.security_deposit_usdc + lease.monthly_rent_usdc,
+            instructions: 'Complete both security deposit and first month rent payments to activate your lease and access the tenant dashboard.'
+          }
+        });
+      } catch (paymentError) {
+        console.error('❌ Error in payment setup:', paymentError);
+        // Still return success for signing, but note payment setup issue
+        res.json({
+          success: true,
+          data: updatedLease,
+          message: `Lease signed by ${signer_type} successfully`,
+          warning: 'Payment records could not be created automatically. Please contact property manager.'
+        });
+      }
+    } else {
+      res.json({
+        success: true,
+        data: updatedLease,
+        message: `Lease signed by ${signer_type} successfully`
+      });
+    }
+  } catch (error) {
+    console.error('❌ Error signing lease:', error);
+    res.status(500).json({
+      success: false,
+      error: error instanceof Error ? error.message : 'Unknown error'
+    });
+  }
+});
+
+// Activate lease (transition tenant role)
+app.post('/api/leases/:id/activate', async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+
+    console.log('✅ [Activate Lease] Request for lease:', id);
+
+    // Get lease with full details
+    const { data: lease, error: leaseError } = await supabase
+      .from('leases')
+      .select('*')
+      .eq('id', id)
+      .single();
+
+    if (leaseError || !lease) {
+      return res.status(404).json({
+        success: false,
+        error: 'Lease not found'
+      });
+    }
+
+    // Verify lease is fully signed
+    if (lease.lease_status !== 'fully_signed') {
+      return res.status(400).json({
+        success: false,
+        error: 'Lease must be fully signed before activation'
+      });
+    }
+
+    // NEW: Verify required payments are completed
+    console.log('💰 [Payment Verification] Checking if initial payments are completed...');
+    
+    const { data: payments, error: paymentsError } = await supabase
+      .from('rent_payments')
+      .select('*')
+      .eq('lease_id', id)
+      .in('payment_type', ['security_deposit', 'rent']);
+
+    if (paymentsError) {
+      console.error('❌ Error fetching payments:', paymentsError);
+      return res.status(500).json({
+        success: false,
+        error: 'Failed to verify payments'
+      });
+    }
+
+    // Check if both required payments exist and are completed
+    const securityPaid = payments?.some(p => 
+      p.payment_type === 'security_deposit' && p.status === 'completed'
+    );
+    const rentPaid = payments?.some(p => 
+      p.payment_type === 'rent' && p.status === 'completed'
+    );
+
+    if (!securityPaid || !rentPaid) {
+      const missingPayments = [];
+      if (!securityPaid) missingPayments.push('Security Deposit');
+      if (!rentPaid) missingPayments.push('First Month Rent');
+      
+      console.warn('⚠️ Payments not completed:', { securityPaid, rentPaid });
+      
+      return res.status(400).json({
+        success: false,
+        error: `Cannot activate lease: The following payments must be completed: ${missingPayments.join(', ')}`,
+        missing_payments: missingPayments,
+        payment_details: {
+          security_deposit: {
+            required: true,
+            completed: securityPaid,
+            amount: lease.security_deposit_usdc
+          },
+          first_month_rent: {
+            required: true,
+            completed: rentPaid,
+            amount: lease.monthly_rent_usdc
+          }
+        }
+      });
+    }
+
+    console.log('✅ [Payment Verification] All required payments completed');
+
+
+    // Update lease status to active
+    const { error: updateLeaseError } = await supabase
+      .from('leases')
+      .update({
+        lease_status: 'active',
+        status: 'active',
+        activated_at: new Date().toISOString()
+      })
+      .eq('id', id);
+
+    if (updateLeaseError) throw updateLeaseError;
+
+    // Transition user from prospective_tenant to tenant
+    const { error: updateUserError } = await supabase
+      .from('users')
+      .update({
+        role: 'tenant',
+        user_type: 'tenant'
+      })
+      .eq('id', lease.tenant_id);
+
+    if (updateUserError) throw updateUserError;
+
+    console.log(`✅ User ${lease.tenant_id} transitioned from prospective_tenant to tenant`);
+
+    // Get updated lease
+    const { data: activatedLease } = await supabase
+      .from('leases')
+      .select(`
+        *,
+        property:properties(*),
+        tenant:users!tenant_id(*)
+      `)
+      .eq('id', id)
+      .single();
+
+    res.json({
+      success: true,
+      data: activatedLease,
+      message: 'Lease activated and tenant role updated successfully'
+    });
+  } catch (error) {
+    console.error('❌ Error activating lease:', error);
+    res.status(500).json({
+      success: false,
+      error: error instanceof Error ? error.message : 'Unknown error'
     });
   }
 });
@@ -3124,6 +4295,380 @@ async function predictMaintenanceNeeds(maintenanceHistory: any[]): Promise<any[]
   
   return predictions;
 }
+
+// ==================== CHAT/MESSAGING ENDPOINTS ====================
+
+// Get conversation messages for an application
+app.get('/api/applications/:applicationId/messages', async (req: Request, res: Response) => {
+  try {
+    const { applicationId } = req.params;
+
+    console.log('💬 [Get Messages] Application ID:', applicationId);
+
+    const { data: messages, error } = await supabase
+      .from('messages')
+      .select(`
+        *,
+        sender:users!sender_id(id, full_name, email, role),
+        recipient:users!recipient_id(id, full_name, email, role)
+      `)
+      .eq('application_id', applicationId)
+      .order('created_at', { ascending: true });
+
+    if (error) {
+      console.error('❌ Error fetching messages:', error);
+      throw error;
+    }
+
+    console.log(`✅ Found ${messages?.length || 0} messages`);
+
+    res.json({ success: true, data: messages || [] });
+  } catch (error) {
+    console.error('❌ Error getting messages:', error);
+    res.status(500).json({
+      success: false,
+      error: error instanceof Error ? error.message : 'Unknown error'
+    });
+  }
+});
+
+// Send a new message
+app.post('/api/applications/:applicationId/messages', async (req: Request, res: Response) => {
+  try {
+    const { applicationId } = req.params;
+    const { sender_id, recipient_id, message_body } = req.body;
+
+    console.log('📤 [Send Message] Application:', applicationId);
+    console.log('   From:', sender_id);
+    console.log('   To:', recipient_id);
+
+    if (!sender_id || !recipient_id || !message_body) {
+      return res.status(400).json({
+        success: false,
+        error: 'sender_id, recipient_id, and message_body are required'
+      });
+    }
+
+    // CRITICAL: Verify both users exist in the users table BEFORE inserting message
+    console.log('🔍 [Send Message] Checking if users exist...');
+    const { data: sender, error: senderError } = await supabase
+      .from('users')
+      .select('id, email, role')
+      .eq('id', sender_id)
+      .single();
+
+    if (senderError || !sender) {
+      console.error('❌ [Send Message] Sender not found in users table:', sender_id);
+      console.error('   Error:', senderError);
+      return res.status(404).json({
+        success: false,
+        error: `Sender user not found. User ID ${sender_id} does not exist in the database.`,
+        details: 'This user needs to be synced from auth.users to public.users table.'
+      });
+    }
+
+    const { data: recipient, error: recipientError } = await supabase
+      .from('users')
+      .select('id, email, role')
+      .eq('id', recipient_id)
+      .single();
+
+    if (recipientError || !recipient) {
+      console.error('❌ [Send Message] Recipient not found in users table:', recipient_id);
+      console.error('   Error:', recipientError);
+      return res.status(404).json({
+        success: false,
+        error: `Recipient user not found. User ID ${recipient_id} does not exist in the database.`,
+        details: 'This user needs to be synced from auth.users to public.users table.'
+      });
+    }
+
+    console.log('✅ [Send Message] Both users exist:');
+    console.log('   Sender:', sender.email, '(' + sender.role + ')');
+    console.log('   Recipient:', recipient.email, '(' + recipient.role + ')');
+
+    // Get application details to link property
+    const { data: application } = await supabase
+      .from('property_applications')
+      .select('property_id')
+      .eq('id', applicationId)
+      .single();
+
+    // Now insert message - FK constraints should pass since we verified users exist
+    const { data: message, error } = await supabase
+      .from('messages')
+      .insert([{
+        application_id: applicationId,
+        property_id: application?.property_id || null,
+        sender_id,
+        recipient_id,
+        message_body,
+        message_type: 'in_app',
+        is_read: false
+      }])
+      .select()
+      .single();
+
+    if (error) {
+      console.error('❌ Error inserting message:', error);
+      console.error('   Code:', error.code);
+      console.error('   Details:', error.details);
+      console.error('   Hint:', error.hint);
+      throw error;
+    }
+
+    console.log('✅ Message sent successfully');
+
+    // Return message with minimal data (avoid FK joins)
+    res.status(201).json({ 
+      success: true, 
+      data: {
+        ...message,
+        sender: { id: sender_id, email: sender.email, role: sender.role },
+        recipient: { id: recipient_id, email: recipient.email, role: recipient.role }
+      }
+    });
+  } catch (error) {
+    console.error('❌ Error sending message:', error);
+    res.status(500).json({
+      success: false,
+      error: error instanceof Error ? error.message : 'Unknown error',
+      details: error // Include full error for debugging
+    });
+  }
+});
+
+// Mark messages as read
+app.put('/api/messages/mark-read', async (req: Request, res: Response) => {
+  try {
+    const { message_ids, user_id } = req.body;
+
+    console.log('👁️ [Mark Read] User:', user_id, 'Messages:', message_ids?.length);
+
+    if (!message_ids || !Array.isArray(message_ids)) {
+      return res.status(400).json({
+        success: false,
+        error: 'message_ids array is required'
+      });
+    }
+
+    const { data, error } = await supabase
+      .from('messages')
+      .update({ is_read: true })
+      .in('id', message_ids)
+      .eq('recipient_id', user_id)
+      .select();
+
+    if (error) {
+      console.error('❌ Error marking messages as read:', error);
+      throw error;
+    }
+
+    console.log(`✅ Marked ${data?.length || 0} messages as read`);
+
+    res.json({ success: true, data });
+  } catch (error) {
+    console.error('❌ Error marking messages as read:', error);
+    res.status(500).json({
+      success: false,
+      error: error instanceof Error ? error.message : 'Unknown error'
+    });
+  }
+});
+
+// Get unread message count for a user
+app.get('/api/users/:userId/unread-count', async (req: Request, res: Response) => {
+  try {
+    const { userId } = req.params;
+
+    const { count, error } = await supabase
+      .from('messages')
+      .select('*', { count: 'exact', head: true })
+      .eq('recipient_id', userId)
+      .eq('is_read', false);
+
+    if (error) throw error;
+
+    res.json({ success: true, count: count || 0 });
+  } catch (error) {
+    console.error('❌ Error getting unread count:', error);
+    res.status(500).json({
+      success: false,
+      error: error instanceof Error ? error.message : 'Unknown error'
+    });
+  }
+});
+
+// ==================== LEASE CHAT ENDPOINTS ====================
+
+// Get conversation messages for a lease
+app.get('/api/leases/:leaseId/messages', async (req: Request, res: Response) => {
+  try {
+    const { leaseId } = req.params;
+
+    console.log('💬 [Get Lease Messages] Lease ID:', leaseId);
+
+    const { data: messages, error } = await supabase
+      .from('messages')
+      .select(`
+        *,
+        sender:users!sender_id(id, full_name, email, role),
+        recipient:users!recipient_id(id, full_name, email, role)
+      `)
+      .eq('lease_id', leaseId)
+      .order('created_at', { ascending: true });
+
+    if (error) {
+      console.error('❌ Error fetching lease messages:', error);
+      throw error;
+    }
+
+    console.log(`✅ Found ${messages?.length || 0} lease messages`);
+
+    res.json({ success: true, data: messages || [] });
+  } catch (error) {
+    console.error('❌ Error getting lease messages:', error);
+    res.status(500).json({
+      success: false,
+      error: error instanceof Error ? error.message : 'Unknown error'
+    });
+  }
+});
+
+// Send a new message to a lease conversation
+app.post('/api/leases/:leaseId/messages', async (req: Request, res: Response) => {
+  try {
+    const { leaseId } = req.params;
+    const { sender_id, recipient_id, message_body } = req.body;
+
+    console.log('📤 [Send Lease Message] Lease:', leaseId);
+    console.log('   From:', sender_id);
+    console.log('   To:', recipient_id);
+
+    if (!sender_id || !recipient_id || !message_body) {
+      return res.status(400).json({
+        success: false,
+        error: 'sender_id, recipient_id, and message_body are required'
+      });
+    }
+
+    // Verify users exist
+    const { data: sender, error: senderError } = await supabase
+      .from('users')
+      .select('id, email, role')
+      .eq('id', sender_id)
+      .single();
+
+    if (senderError || !sender) {
+      console.error('❌ [Send Lease Message] Sender not found:', sender_id);
+      return res.status(404).json({
+        success: false,
+        error: `Sender user not found`
+      });
+    }
+
+    const { data: recipient, error: recipientError } = await supabase
+      .from('users')
+      .select('id, email, role')
+      .eq('id', recipient_id)
+      .single();
+
+    if (recipientError || !recipient) {
+      console.error('❌ [Send Lease Message] Recipient not found:', recipient_id);
+      return res.status(404).json({
+        success: false,
+        error: `Recipient user not found`
+      });
+    }
+
+    // Get lease details to link property
+    const { data: lease } = await supabase
+      .from('leases')
+      .select('property_id')
+      .eq('id', leaseId)
+      .single();
+
+    // Insert message
+    const { data: message, error } = await supabase
+      .from('messages')
+      .insert([{
+        lease_id: leaseId,
+        property_id: lease?.property_id || null,
+        sender_id,
+        recipient_id,
+        message_body,
+        message_type: 'in_app',
+        is_read: false
+      }])
+      .select()
+      .single();
+
+    if (error) {
+      console.error('❌ Error inserting lease message:', error);
+      throw error;
+    }
+
+    console.log('✅ Lease message sent successfully');
+
+    res.status(201).json({ 
+      success: true, 
+      data: {
+        ...message,
+        sender: { id: sender_id, email: sender.email, role: sender.role },
+        recipient: { id: recipient_id, email: recipient.email, role: recipient.role }
+      }
+    });
+  } catch (error) {
+    console.error('❌ Error sending lease message:', error);
+    res.status(500).json({
+      success: false,
+      error: error instanceof Error ? error.message : 'Unknown error'
+    });
+  }
+});
+
+// Migrate application chat to lease
+app.post('/api/leases/:leaseId/migrate-chat', async (req: Request, res: Response) => {
+  try {
+    const { leaseId } = req.params;
+    const { applicationId } = req.body;
+
+    console.log('🔄 [Migrate Chat] Application:', applicationId, '→ Lease:', leaseId);
+
+    if (!applicationId) {
+      return res.status(400).json({
+        success: false,
+        error: 'applicationId is required'
+      });
+    }
+
+    // Update all messages from the application to also reference the lease
+    const { data, error } = await supabase
+      .from('messages')
+      .update({ lease_id: leaseId })
+      .eq('application_id', applicationId)
+      .select();
+
+    if (error) {
+      console.error('❌ Error migrating chat:', error);
+      throw error;
+    }
+
+    console.log(`✅ Migrated ${data?.length || 0} messages to lease`);
+
+    res.json({ 
+      success: true, 
+      migrated: data?.length || 0,
+      message: `Chat conversation migrated from application to lease`
+    });
+  } catch (error) {
+    console.error('❌ Error migrating chat:', error);
+    res.status(500).json({
+      success: false,
+      error: error instanceof Error ? error.message : 'Unknown error'
+    });
+  }
+});
 
 // Start server
 app.listen(PORT, () => {

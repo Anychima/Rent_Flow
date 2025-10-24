@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { Routes, Route, useNavigate } from 'react-router-dom';
 import './index.css';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import PropertyForm from './components/PropertyForm';
@@ -10,6 +11,14 @@ import TenantDashboard from './components/TenantDashboard';
 import VoiceNotifications from './components/VoiceNotifications';
 import PublicPropertyList from './components/PublicPropertyList';
 import PublicPropertyListings from './components/PublicPropertyListings';
+import PropertyDetail from './components/PropertyDetail';
+import AuthWall from './components/AuthWall';
+import PropertyApplicationForm from './components/PropertyApplicationForm';
+import MyApplications from './components/MyApplications';
+import LeaseSigningPage from './pages/LeaseSigningPage';
+import LeaseReviewPage from './pages/LeaseReviewPage';
+import ApplicationReviewModal from './components/ApplicationReviewModal';
+import ChatBox from './components/ChatBox';
 
 interface Toast {
   id: number;
@@ -99,10 +108,32 @@ interface MaintenanceRequest {
   };
 }
 
+interface Application {
+  id: string;
+  property_id: string;
+  applicant_id: string;
+  status: string;
+  employment_status: string;
+  monthly_income_usdc: number;
+  ai_compatibility_score: number;
+  ai_risk_score: number;
+  ai_analysis: any;
+  requested_move_in_date: string;
+  created_at: string;
+  property: Property;
+  applicant: {
+    id: string;
+    full_name: string;
+    email: string;
+  };
+  manager_notes?: string;
+}
+
 const API_URL = process.env.REACT_APP_BACKEND_URL || 'http://localhost:3001';
 
 function Dashboard() {
-  const { user, signOut } = useAuth();
+  const { user, userProfile, signOut } = useAuth();
+  const navigate = useNavigate();
   const [stats, setStats] = useState<DashboardStats>({
     totalProperties: 0,
     activeLeases: 0,
@@ -113,6 +144,7 @@ function Dashboard() {
   const [leases, setLeases] = useState<Lease[]>([]);
   const [maintenance, setMaintenance] = useState<MaintenanceRequest[]>([]);
   const [payments, setPayments] = useState<Payment[]>([]);
+  const [applications, setApplications] = useState<Application[]>([]);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState('dashboard');
   const [toasts, setToasts] = useState<Toast[]>([]);
@@ -126,10 +158,42 @@ function Dashboard() {
   const [editingPayment, setEditingPayment] = useState<Payment | null>(null);
   const [showMaintenanceForm, setShowMaintenanceForm] = useState(false);
   const [editingMaintenance, setEditingMaintenance] = useState<MaintenanceRequest | null>(null);
+  const [selectedApplication, setSelectedApplication] = useState<Application | null>(null);
+  const [chatApplication, setChatApplication] = useState<Application | null>(null);
+  const [leaseStatus, setLeaseStatus] = useState<Record<string, { exists: boolean; landlordSigned: boolean; tenantSigned: boolean; fullySigned: boolean }>>({});
 
   useEffect(() => {
     fetchData();
   }, []);
+
+  const checkLeaseStatusForApps = async (apps: Application[]) => {
+    const approvedApps = apps.filter(app => app.status === 'approved');
+    const statusMap: Record<string, { exists: boolean; landlordSigned: boolean; tenantSigned: boolean; fullySigned: boolean }> = {};
+    
+    for (const app of approvedApps) {
+      try {
+        const response = await fetch(`${API_URL}/api/leases/by-application/${app.id}`);
+        const result = await response.json();
+        
+        if (result.success && result.data) {
+          const lease = result.data;
+          statusMap[app.id] = {
+            exists: true,
+            landlordSigned: !!lease.landlord_signature,
+            tenantSigned: !!lease.tenant_signature,
+            fullySigned: !!lease.landlord_signature && !!lease.tenant_signature
+          };
+        } else {
+          statusMap[app.id] = { exists: false, landlordSigned: false, tenantSigned: false, fullySigned: false };
+        }
+      } catch (err) {
+        console.error('Error checking lease status:', err);
+        statusMap[app.id] = { exists: false, landlordSigned: false, tenantSigned: false, fullySigned: false };
+      }
+    }
+    
+    setLeaseStatus(statusMap);
+  };
 
   const showToast = (message: string, type: 'success' | 'error' | 'info' = 'info') => {
     const id = Date.now();
@@ -187,9 +251,14 @@ function Dashboard() {
       
       const method = editingProperty ? 'PUT' : 'POST';
 
-      // Add owner_id for new properties (should come from auth in production)
+      // Add owner_id for new properties (use logged-in manager's ID)
       if (!editingProperty) {
-        (propertyData as any).owner_id = 'a0000000-0000-0000-0000-000000000001'; // Default manager
+        if (!userProfile?.id) {
+          showToast('Error: User profile not found. Please refresh and try again.', 'error');
+          return;
+        }
+        (propertyData as any).owner_id = userProfile.id;
+        console.log('🏠 [Property] Creating property for manager:', userProfile.email, 'ID:', userProfile.id);
       }
 
       const response = await fetch(url, {
@@ -519,32 +588,106 @@ function Dashboard() {
 
   const fetchData = async () => {
     try {
+      console.log('📊 [Dashboard] Starting data fetch...');
+      console.log('👤 [Dashboard] Current user:', userProfile?.email, 'Role:', userProfile?.role);
       setLoading(true);
-      const [statsRes, propsRes, leasesRes, maintenanceRes, paymentsRes] = await Promise.all([
-        fetch(`${API_URL}/api/dashboard/stats`),
-        fetch(`${API_URL}/api/properties`),
-        fetch(`${API_URL}/api/leases`),
-        fetch(`${API_URL}/api/maintenance`),
-        fetch(`${API_URL}/api/payments`)
-      ]);
+      
+      // For managers, fetch only their data
+      const managerId = userProfile?.role === 'manager' && userProfile?.id ? userProfile.id : null;
+      
+      // Build URLs with manager_id parameter where applicable
+      const propertiesUrl = managerId
+        ? `${API_URL}/api/properties?manager_id=${managerId}`
+        : `${API_URL}/api/properties`;
+      
+      const statsUrl = managerId
+        ? `${API_URL}/api/dashboard/stats?manager_id=${managerId}`
+        : `${API_URL}/api/dashboard/stats`;
+      
+      const leasesUrl = managerId
+        ? `${API_URL}/api/leases?manager_id=${managerId}`
+        : `${API_URL}/api/leases`;
+      
+      const maintenanceUrl = managerId
+        ? `${API_URL}/api/maintenance?manager_id=${managerId}`
+        : `${API_URL}/api/maintenance`;
+      
+      const paymentsUrl = managerId
+        ? `${API_URL}/api/payments?manager_id=${managerId}`
+        : `${API_URL}/api/payments`;
+      
+      const applicationsUrl = managerId
+        ? `${API_URL}/api/applications?manager_id=${managerId}`
+        : `${API_URL}/api/applications`;
+      
+      console.log('🏛️ [Dashboard] Fetching properties from:', propertiesUrl);
+      console.log('📊 [Dashboard] Fetching stats from:', statsUrl);
+      
+      // Fetch all data with individual error handling
+      console.log('🔄 [Dashboard] Fetching stats...');
+      const statsRes = await fetch(statsUrl).catch(() => null);
+      console.log('🔄 [Dashboard] Fetching properties...');
+      const propsRes = await fetch(propertiesUrl).catch(() => null);
+      console.log('🔄 [Dashboard] Fetching leases...');
+      const leasesRes = await fetch(leasesUrl).catch(() => null);
+      console.log('🔄 [Dashboard] Fetching maintenance...');
+      const maintenanceRes = await fetch(maintenanceUrl).catch(() => null);
+      console.log('🔄 [Dashboard] Fetching payments...');
+      const paymentsRes = await fetch(paymentsUrl).catch(() => null);
+      console.log('🔄 [Dashboard] Fetching applications...');
+      const applicationsRes = await fetch(applicationsUrl).catch(() => null);
 
-      const [statsData, propsData, leasesData, maintenanceData, paymentsData] = await Promise.all([
-        statsRes.json(),
-        propsRes.json(),
-        leasesRes.json(),
-        maintenanceRes.json(),
-        paymentsRes.json()
-      ]);
+      // Parse responses with fallbacks
+      console.log('📦 [Dashboard] Parsing responses...');
+      const statsData = statsRes ? await statsRes.json().catch(() => ({ success: false })) : { success: false };
+      const propsData = propsRes ? await propsRes.json().catch(() => ({ success: false })) : { success: false };
+      const leasesData = leasesRes ? await leasesRes.json().catch(() => ({ success: false })) : { success: false };
+      const maintenanceData = maintenanceRes ? await maintenanceRes.json().catch(() => ({ success: false })) : { success: false };
+      const paymentsData = paymentsRes ? await paymentsRes.json().catch(() => ({ success: false })) : { success: false };
+      const applicationsData = applicationsRes ? await applicationsRes.json().catch(() => ({ success: false })) : { success: false };
 
-      if (statsData.success) setStats(statsData.data);
-      if (propsData.success) setProperties(propsData.data || []);
+      console.log('📊 [Dashboard] API Response Summary:');
+      console.log('   Stats:', statsData.success ? '✅' : '❌', statsData);
+      console.log('   Properties:', propsData.success ? '✅' : '❌', propsData.data?.length || 0, 'items');
+      console.log('   Leases:', leasesData.success ? '✅' : '❌', leasesData.data?.length || 0, 'items');
+      console.log('   Maintenance:', maintenanceData.success ? '✅' : '❌', maintenanceData.data?.length || 0, 'items');
+      console.log('   Payments:', paymentsData.success ? '✅' : '❌', paymentsData.data?.length || 0, 'items');
+      console.log('   Applications:', applicationsData.success ? '✅' : '❌', applicationsData.data?.length || 0, 'items');
+
+      // Update state with defaults for failed requests
+      if (statsData.success) {
+        console.log('✅ [Dashboard] Setting stats:', statsData.data);
+        setStats(statsData.data);
+      } else {
+        console.error('❌ [Dashboard] Stats failed, using defaults');
+      }
+      
+      if (propsData.success) {
+        console.log('✅ [Dashboard] Setting properties:', propsData.data?.length || 0);
+        setProperties(propsData.data || []);
+      } else {
+        console.error('❌ [Dashboard] Properties failed');
+      }
+      
       if (leasesData.success) setLeases(leasesData.data || []);
       if (maintenanceData.success) setMaintenance(maintenanceData.data || []);
       if (paymentsData.success) setPayments(paymentsData.data || []);
+      if (applicationsData.success) {
+        const apps = applicationsData.data || [];
+        setApplications(apps);
+        // Check lease status for approved applications
+        await checkLeaseStatusForApps(apps);
+      } else {
+        console.warn('⚠️  [Dashboard] Applications endpoint failed, using empty array');
+        setApplications([]);
+      }
+      
+      console.log('✅ [Dashboard] Data fetch complete!');
     } catch (error) {
-      console.error('Error fetching data:', error);
+      console.error('❌ [Dashboard] Error fetching data:', error);
     } finally {
       setLoading(false);
+      console.log('🏁 [Dashboard] Loading state set to false');
     }
   };
 
@@ -627,7 +770,7 @@ function Dashboard() {
       <nav className="bg-white border-b">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex space-x-8">
-            {['dashboard', 'properties', 'leases', 'payments', 'analytics', 'maintenance', 'notifications'].map((tab) => (
+            {['dashboard', 'properties', 'applications', 'leases', 'payments', 'analytics', 'maintenance', 'notifications'].map((tab) => (
               <button
                 key={tab}
                 onClick={() => setActiveTab(tab)}
@@ -975,6 +1118,350 @@ function Dashboard() {
           </div>
         )}
 
+        {activeTab === 'applications' && (
+          <div>
+            <div className="mb-6">
+              <h2 className="text-2xl font-bold text-gray-900 mb-4">Application Management</h2>
+              <div className="flex gap-4 mb-6">
+                <select
+                  value={filterStatus}
+                  onChange={(e) => setFilterStatus(e.target.value)}
+                  className="px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                >
+                  <option value="all">All Status</option>
+                  <option value="submitted">Submitted</option>
+                  <option value="under_review">Under Review</option>
+                  <option value="approved">Approved</option>
+                  <option value="rejected">Rejected</option>
+                </select>
+              </div>
+            </div>
+
+            {applications.filter(app => filterStatus === 'all' || app.status === filterStatus).length === 0 ? (
+              <div className="text-center py-12 bg-white rounded-lg shadow">
+                <div className="text-6xl mb-4">📋</div>
+                <p className="text-gray-500 text-lg">No applications found</p>
+                <p className="text-gray-400 text-sm mt-2">Applications will appear here when prospective tenants apply</p>
+              </div>
+            ) : (
+              <div className="space-y-4">
+                {applications
+                  .filter(app => filterStatus === 'all' || app.status === filterStatus)
+                  .sort((a, b) => b.ai_compatibility_score - a.ai_compatibility_score)
+                  .map((app, index) => (
+                  <div key={`${app.id}-${index}`} className="bg-white rounded-xl shadow-lg p-6 hover:shadow-xl transition-all">
+                    <div className="flex justify-between items-start mb-4">
+                      <div className="flex-1">
+                        <h3 className="text-xl font-bold text-gray-800">{app.applicant?.full_name || 'Unknown Applicant'}</h3>
+                        <p className="text-gray-600">{app.property?.title || 'Unknown Property'}</p>
+                        <p className="text-sm text-gray-500 mt-1">Applied {new Date(app.created_at).toLocaleDateString()}</p>
+                      </div>
+                      <div className="flex items-center gap-4">
+                        <div className="text-center">
+                          <div className={`text-3xl font-bold ${
+                            app.ai_compatibility_score >= 75 ? 'text-green-600' :
+                            app.ai_compatibility_score >= 60 ? 'text-blue-600' :
+                            app.ai_compatibility_score >= 45 ? 'text-yellow-600' : 'text-red-600'
+                          }`}>
+                            {app.ai_compatibility_score}
+                          </div>
+                          <div className="text-xs text-gray-500">Score</div>
+                        </div>
+                        <span className={`px-3 py-1 rounded-full text-xs font-semibold ${
+                          app.status === 'submitted' ? 'bg-blue-100 text-blue-800' :
+                          app.status === 'under_review' ? 'bg-yellow-100 text-yellow-800' :
+                          app.status === 'approved' ? 'bg-green-100 text-green-800' :
+                          app.status === 'rejected' ? 'bg-red-100 text-red-800' : 'bg-gray-100 text-gray-800'
+                        }`}>
+                          {app.status.replace('_', ' ').toUpperCase()}
+                        </span>
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-3 gap-4 mb-4 text-sm">
+                      <div>
+                        <span className="text-gray-600">Income:</span>
+                        <span className="ml-2 font-semibold">${app.monthly_income_usdc.toLocaleString()}</span>
+                      </div>
+                      <div>
+                        <span className="text-gray-600">Ratio:</span>
+                        <span className="ml-2 font-semibold">
+                          {(app.monthly_income_usdc / (app.property?.monthly_rent_usdc || 1)).toFixed(2)}x
+                        </span>
+                      </div>
+                      <div>
+                        <span className="text-gray-600">Move-in:</span>
+                        <span className="ml-2 font-semibold">
+                          {new Date(app.requested_move_in_date).toLocaleDateString()}
+                        </span>
+                      </div>
+                    </div>
+
+                    <div className="flex gap-2 mt-4">
+                      <button
+                        onClick={() => setSelectedApplication(app)}
+                        className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+                      >
+                        Review Details
+                      </button>
+                      {app.status === 'approved' && (
+                        <>
+                          <button
+                            onClick={() => setChatApplication(app)}
+                            className="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors flex items-center gap-2"
+                          >
+                            💬 Chat
+                          </button>
+                          
+                          {/* Lease Status Indicator for Manager */}
+                          {leaseStatus[app.id]?.exists ? (
+                            <div className="flex items-center gap-2">
+                              <button
+                                onClick={() => {
+                                  // Find the lease ID for this application
+                                  fetch(`${API_URL}/api/leases/by-application/${app.id}`)
+                                    .then(res => res.json())
+                                    .then(result => {
+                                      if (result.success && result.data) {
+                                        navigate(`/lease/review/${result.data.id}`);
+                                      }
+                                    });
+                                }}
+                                className="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors flex items-center gap-2"
+                              >
+                                📋 View Lease
+                              </button>
+                              {leaseStatus[app.id]?.fullySigned ? (
+                                <span className="px-3 py-2 bg-green-100 border-2 border-green-300 text-green-700 rounded-lg font-medium text-sm">
+                                  ✅ Fully Signed
+                                </span>
+                              ) : leaseStatus[app.id]?.tenantSigned ? (
+                                <span className="px-3 py-2 bg-blue-100 border-2 border-blue-300 text-blue-700 rounded-lg font-medium text-sm">
+                                  🖊️ Tenant Signed - Your Turn!
+                                </span>
+                              ) : leaseStatus[app.id]?.landlordSigned ? (
+                                <span className="px-3 py-2 bg-yellow-100 border-2 border-yellow-300 text-yellow-700 rounded-lg font-medium text-sm">
+                                  ⏳ Awaiting Tenant Signature
+                                </span>
+                              ) : (
+                                <span className="px-3 py-2 bg-gray-100 border-2 border-gray-300 text-gray-700 rounded-lg font-medium text-sm">
+                                  📝 Lease Created - Sign or Send
+                                </span>
+                              )}
+                            </div>
+                          ) : (
+                            <button
+                              onClick={async () => {
+                                try {
+                                  showToast('Generating lease...', 'info');
+                                  const response = await fetch(`${API_URL}/api/leases/generate`, {
+                                    method: 'POST',
+                                    headers: { 'Content-Type': 'application/json' },
+                                    body: JSON.stringify({ application_id: app.id })
+                                  });
+                                  const result = await response.json();
+                                  if (result.success) {
+                                    showToast('Lease generated successfully!', 'success');
+                                    // Navigate to lease review page using React Router
+                                    navigate(`/lease/review/${result.data.id}`);
+                                  } else {
+                                    showToast(result.error || 'Failed to generate lease', 'error');
+                                  }
+                                } catch (err) {
+                                  showToast('Error generating lease', 'error');
+                                  console.error(err);
+                                }
+                              }}
+                              className="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors flex items-center gap-2"
+                            >
+                              📝 Generate Lease
+                            </button>
+                          )}
+                        </>
+                      )}
+                      {app.status === 'submitted' && (
+                        <>
+                          <button
+                            onClick={async () => {
+                              try {
+                                console.log('Quick approving application:', app.id);
+                                const response = await fetch(`${API_URL}/api/applications/${app.id}/status`, {
+                                  method: 'PUT',
+                                  headers: { 'Content-Type': 'application/json' },
+                                  body: JSON.stringify({ status: 'approved', reviewed_by: user?.id })
+                                });
+                                const result = await response.json();
+                                console.log('Quick approval response:', result);
+                                
+                                if (result.success || response.ok) {
+                                  showToast('Application approved! ✅', 'success');
+                                  await fetchData();
+                                } else {
+                                  showToast(result.error || 'Failed to approve', 'error');
+                                }
+                              } catch (err) {
+                                console.error('Error approving:', err);
+                                showToast('Error approving application', 'error');
+                              }
+                            }}
+                            className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors font-semibold"
+                          >
+                            ✓ Approve
+                          </button>
+                          <button
+                            onClick={async () => {
+                              if (!window.confirm('Are you sure you want to reject this application?')) return;
+                              try {
+                                console.log('Quick rejecting application:', app.id);
+                                const response = await fetch(`${API_URL}/api/applications/${app.id}/status`, {
+                                  method: 'PUT',
+                                  headers: { 'Content-Type': 'application/json' },
+                                  body: JSON.stringify({ status: 'rejected', reviewed_by: user?.id })
+                                });
+                                const result = await response.json();
+                                console.log('Quick rejection response:', result);
+                                
+                                if (result.success || response.ok) {
+                                  showToast('Application rejected', 'info');
+                                  await fetchData();
+                                } else {
+                                  showToast(result.error || 'Failed to reject', 'error');
+                                }
+                              } catch (err) {
+                                console.error('Error rejecting:', err);
+                                showToast('Error rejecting application', 'error');
+                              }
+                            }}
+                            className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors font-semibold"
+                          >
+                            ✕ Reject
+                          </button>
+                        </>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* Application Detail Modal */}
+            <ApplicationReviewModal
+              application={selectedApplication}
+              onClose={() => setSelectedApplication(null)}
+              onApprove={async (notes) => {
+                try {
+                  console.log('Approving application:', selectedApplication!.id);
+                  
+                  // Prepare update payload - don't send reviewed_by to avoid FK constraint issues
+                  const updatePayload: any = {
+                    status: 'approved',
+                    manager_notes: notes
+                  };
+                  
+                  // Only include reviewed_by if we have a valid user ID
+                  // (commenting out for now to avoid FK constraint issues)
+                  // if (user?.id) {
+                  //   updatePayload.reviewed_by = user.id;
+                  // }
+                  
+                  const response = await fetch(`${API_URL}/api/applications/${selectedApplication!.id}/status`, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(updatePayload)
+                  });
+                  
+                  if (!response.ok) {
+                    const errorText = await response.text();
+                    console.error('Approval failed:', errorText);
+                    throw new Error(`Server error: ${response.status}`);
+                  }
+                  
+                  const result = await response.json();
+                  console.log('Approval response:', result);
+
+                  if (result.success) {
+                    showToast('Application approved successfully! ✅', 'success');
+                    setSelectedApplication(null);
+                    await fetchData();
+                  } else {
+                    const errorMsg = result.error || 'Failed to approve application';
+                    showToast(errorMsg, 'error');
+                    console.error('Approval error:', errorMsg);
+                  }
+                } catch (err: any) {
+                  console.error('Error approving application:', err);
+                  const errorMsg = err.message || 'Error approving application';
+                  showToast(errorMsg, 'error');
+                }
+              }}
+              onReject={async (notes) => {
+                try {
+                  console.log('Rejecting application:', selectedApplication!.id);
+                  
+                  // Prepare update payload - don't send reviewed_by to avoid FK constraint issues
+                  const updatePayload: any = {
+                    status: 'rejected',
+                    manager_notes: notes
+                  };
+                  
+                  // Only include reviewed_by if we have a valid user ID
+                  // (commenting out for now to avoid FK constraint issues)
+                  // if (user?.id) {
+                  //   updatePayload.reviewed_by = user.id;
+                  // }
+                  
+                  const response = await fetch(`${API_URL}/api/applications/${selectedApplication!.id}/status`, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(updatePayload)
+                  });
+                  
+                  if (!response.ok) {
+                    const errorText = await response.text();
+                    console.error('Rejection failed:', errorText);
+                    throw new Error(`Server error: ${response.status}`);
+                  }
+                  
+                  const result = await response.json();
+                  console.log('Rejection response:', result);
+
+                  if (result.success) {
+                    showToast('Application rejected', 'info');
+                    setSelectedApplication(null);
+                    await fetchData();
+                  } else {
+                    const errorMsg = result.error || 'Failed to reject application';
+                    showToast(errorMsg, 'error');
+                    console.error('Rejection error:', errorMsg);
+                  }
+                } catch (err: any) {
+                  console.error('Error rejecting application:', err);
+                  const errorMsg = err.message || 'Error rejecting application';
+                  showToast(errorMsg, 'error');
+                }
+              }}
+              userId={user?.id}
+            />
+
+            {/* Chat Modal */}
+            {chatApplication && (
+              <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+                <div className="max-w-4xl w-full">
+                  <ChatBox
+                    applicationId={chatApplication.id}
+                    conversationType="application"
+                    currentUserId={user?.id || ''}
+                    otherUserId={chatApplication.applicant_id}
+                    otherUserName={chatApplication.applicant?.full_name || 'Applicant'}
+                    otherUserRole="prospective_tenant"
+                    onClose={() => setChatApplication(null)}
+                  />
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
         {activeTab === 'analytics' && <PaymentAnalytics />}
 
         {activeTab === 'maintenance' && (
@@ -1206,7 +1693,7 @@ function Dashboard() {
   );
 }
 
-export default function App() {
+function App() {
   return (
     <AuthProvider>
       <AppContent />
@@ -1372,14 +1859,45 @@ function AppContent() {
   }
 
   // Authenticated - route based on role
-  console.log('🔀 Routing decision:', userProfile.role);
+  console.log('==================================================');
+  console.log('🔀 [App.tsx] Routing Decision for User:');
+  console.log('   Email:', user?.email);
+  console.log('   Auth ID:', user?.id);
+  console.log('   Profile Role:', userProfile.role);
+  console.log('   Profile User Type:', userProfile.user_type);
+  console.log('   Full Profile:', userProfile);
+  console.log('==================================================');
   
   if (userProfile.role === 'tenant') {
-    console.log('✅ Showing TenantDashboard');
+    console.log('✅ [App.tsx] Role is TENANT - Showing TenantDashboard');
     return <TenantDashboard />;
   }
 
-  console.log('✅ Showing Manager Dashboard');
+  if (userProfile.role === 'prospective_tenant') {
+    console.log('✅ [App.tsx] Role is PROSPECTIVE_TENANT - Showing PublicPropertyListings');
+    return <PublicPropertyListings />;
+  }
+
+  console.log('✅ [App.tsx] Role is MANAGER (or default) - Showing Manager Dashboard');
+  console.log('   If you see a blank screen, check the browser Network tab for failed API calls');
   // Default to manager/admin dashboard
   return <Dashboard />;
+}
+
+// Add routing wrapper for property detail pages
+export default function AppWrapper() {
+  return (
+    <AuthProvider>
+      <Routes>
+        <Route path="/" element={<App />} />
+        <Route path="/property/:id" element={<PropertyDetail />} />
+        <Route path="/apply/:id" element={<PropertyApplicationForm />} />
+        <Route path="/my-applications" element={<MyApplications />} />
+        <Route path="/lease/sign/:id" element={<LeaseSigningPage />} />
+        <Route path="/lease/review/:id" element={<LeaseReviewPage />} />
+        <Route path="/login" element={<AuthWall mode="login" />} />
+        <Route path="/signup" element={<AuthWall mode="signup" />} />
+      </Routes>
+    </AuthProvider>
+  );
 }

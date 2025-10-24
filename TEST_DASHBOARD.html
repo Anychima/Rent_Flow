@@ -1,0 +1,438 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>RentFlow Dashboard Diagnostics</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: #333;
+        }
+        .container {
+            background: white;
+            border-radius: 12px;
+            padding: 30px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+        }
+        h1 {
+            color: #667eea;
+            margin-bottom: 10px;
+        }
+        .subtitle {
+            color: #666;
+            margin-bottom: 30px;
+        }
+        .test-section {
+            margin: 20px 0;
+            padding: 20px;
+            border: 2px solid #e0e0e0;
+            border-radius: 8px;
+            background: #f9f9f9;
+        }
+        .test-section h2 {
+            margin-top: 0;
+            color: #764ba2;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        .status {
+            display: inline-block;
+            padding: 4px 12px;
+            border-radius: 20px;
+            font-size: 12px;
+            font-weight: bold;
+            margin-left: 10px;
+        }
+        .status.loading {
+            background: #ffeaa7;
+            color: #fdcb6e;
+        }
+        .status.success {
+            background: #d4edda;
+            color: #155724;
+        }
+        .status.error {
+            background: #f8d7da;
+            color: #721c24;
+        }
+        button {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 16px;
+            font-weight: bold;
+            margin: 10px 10px 10px 0;
+            transition: transform 0.2s;
+        }
+        button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+        }
+        button:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+        .result {
+            margin-top: 15px;
+            padding: 15px;
+            background: white;
+            border-radius: 6px;
+            border-left: 4px solid #667eea;
+            font-family: 'Courier New', monospace;
+            font-size: 13px;
+            white-space: pre-wrap;
+            word-wrap: break-word;
+            max-height: 400px;
+            overflow-y: auto;
+        }
+        .error-result {
+            border-left-color: #dc3545;
+            background: #fff5f5;
+        }
+        .success-result {
+            border-left-color: #28a745;
+            background: #f0fff4;
+        }
+        .summary {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 20px;
+            border-radius: 8px;
+            margin: 20px 0;
+        }
+        .summary h3 {
+            margin-top: 0;
+        }
+        .checklist {
+            list-style: none;
+            padding: 0;
+        }
+        .checklist li {
+            padding: 8px 0;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        .checklist li:before {
+            content: '❓';
+            font-size: 20px;
+        }
+        .checklist li.pass:before {
+            content: '✅';
+        }
+        .checklist li.fail:before {
+            content: '❌';
+        }
+        .info-box {
+            background: #e3f2fd;
+            border-left: 4px solid #2196f3;
+            padding: 15px;
+            margin: 15px 0;
+            border-radius: 4px;
+        }
+        .warning-box {
+            background: #fff3cd;
+            border-left: 4px solid #ffc107;
+            padding: 15px;
+            margin: 15px 0;
+            border-radius: 4px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🔍 RentFlow Dashboard Diagnostics</h1>
+        <p class="subtitle">This tool will help diagnose why your dashboard is not behaving as expected</p>
+
+        <div class="summary">
+            <h3>📊 Quick Summary</h3>
+            <ul class="checklist" id="checklist">
+                <li id="check-frontend">Frontend server running on port 3000</li>
+                <li id="check-backend">Backend server running on port 3001</li>
+                <li id="check-stats">Dashboard stats endpoint working</li>
+                <li id="check-properties">Properties endpoint working</li>
+                <li id="check-applications">Applications endpoint working</li>
+                <li id="check-db">Database migration completed</li>
+            </ul>
+        </div>
+
+        <div class="test-section">
+            <h2>
+                🌐 Step 1: Test Backend Endpoints
+                <span class="status loading" id="status-backend">Not Tested</span>
+            </h2>
+            <p>Check if all backend API endpoints are responding correctly</p>
+            <button onclick="testAllEndpoints()">Run All Tests</button>
+            <button onclick="testEndpoint('stats')">Test Stats</button>
+            <button onclick="testEndpoint('properties')">Test Properties</button>
+            <button onclick="testEndpoint('applications')">Test Applications</button>
+            <div id="backend-results"></div>
+        </div>
+
+        <div class="test-section">
+            <h2>
+                🗄️ Step 2: Check Database Tables
+                <span class="status loading" id="status-db">Not Checked</span>
+            </h2>
+            <p>Verify required database tables exist</p>
+            <div class="info-box">
+                <strong>Required Tables:</strong>
+                <ul>
+                    <li>properties ✓</li>
+                    <li>users ✓</li>
+                    <li>leases ✓</li>
+                    <li>property_applications ❓ (Often missing!)</li>
+                </ul>
+            </div>
+            <div class="warning-box">
+                <strong>⚠️ If applications endpoint fails:</strong><br>
+                You need to run the database migration in Supabase SQL Editor.<br>
+                File: <code>RUNTHIS_IN_SUPABASE.sql</code>
+            </div>
+        </div>
+
+        <div class="test-section">
+            <h2>
+                🎨 Step 3: Test Frontend
+                <span class="status loading" id="status-frontend">Not Tested</span>
+            </h2>
+            <p>Check if the React app is loading correctly</p>
+            <button onclick="testFrontend()">Test Frontend</button>
+            <button onclick="window.open('http://localhost:3000', '_blank')">Open Dashboard</button>
+            <div id="frontend-results"></div>
+        </div>
+
+        <div class="test-section">
+            <h2>📋 Step 4: Next Steps</h2>
+            <div id="recommendations">
+                <p>Run the tests above to get specific recommendations...</p>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const API_URL = 'http://localhost:3001';
+        const FRONTEND_URL = 'http://localhost:3000';
+
+        async function testEndpoint(type) {
+            const endpoints = {
+                stats: '/api/dashboard/stats',
+                properties: '/api/properties',
+                applications: '/api/applications',
+                leases: '/api/leases',
+                payments: '/api/payments'
+            };
+
+            const url = API_URL + endpoints[type];
+            const resultsDiv = document.getElementById('backend-results');
+            
+            try {
+                resultsDiv.innerHTML += `<div>Testing ${type}... </div>`;
+                
+                const response = await fetch(url);
+                const data = await response.json();
+                
+                const resultClass = data.success ? 'success-result' : 'error-result';
+                const checkId = `check-${type === 'stats' ? 'stats' : type === 'properties' ? 'properties' : 'applications'}`;
+                
+                if (data.success) {
+                    resultsDiv.innerHTML += `
+                        <div class="result ${resultClass}">
+                            ✅ ${type.toUpperCase()} - SUCCESS
+                            Data count: ${data.data?.length || (typeof data.data === 'object' ? 'Stats object' : 'N/A')}
+                            ${JSON.stringify(data, null, 2)}
+                        </div>
+                    `;
+                    document.getElementById(checkId)?.classList.add('pass');
+                } else {
+                    resultsDiv.innerHTML += `
+                        <div class="result ${resultClass}">
+                            ❌ ${type.toUpperCase()} - FAILED
+                            Error: ${data.error || 'Unknown error'}
+                            ${data.hint ? 'Hint: ' + data.hint : ''}
+                            ${JSON.stringify(data, null, 2)}
+                        </div>
+                    `;
+                    document.getElementById(checkId)?.classList.add('fail');
+                    
+                    if (type === 'applications') {
+                        showApplicationsError(data.error);
+                    }
+                }
+            } catch (error) {
+                resultsDiv.innerHTML += `
+                    <div class="result error-result">
+                        ❌ ${type.toUpperCase()} - NETWORK ERROR
+                        ${error.message}
+                        
+                        Is the backend server running?
+                        Check: npm run dev
+                    </div>
+                `;
+                document.getElementById(`check-${type}`)?.classList.add('fail');
+            }
+        }
+
+        async function testAllEndpoints() {
+            document.getElementById('backend-results').innerHTML = '<h3>Running all endpoint tests...</h3>';
+            document.getElementById('status-backend').textContent = 'Testing...';
+            document.getElementById('status-backend').className = 'status loading';
+            
+            await testEndpoint('stats');
+            await testEndpoint('properties');
+            await testEndpoint('applications');
+            
+            document.getElementById('status-backend').textContent = 'Complete';
+            document.getElementById('status-backend').className = 'status success';
+            
+            updateRecommendations();
+        }
+
+        async function testFrontend() {
+            const resultsDiv = document.getElementById('frontend-results');
+            resultsDiv.innerHTML = '<div>Testing frontend...</div>';
+            
+            try {
+                const response = await fetch(FRONTEND_URL);
+                const html = await response.text();
+                
+                if (html.includes('root') && html.includes('script')) {
+                    resultsDiv.innerHTML = `
+                        <div class="result success-result">
+                            ✅ Frontend is running correctly!
+                            Port: 3000
+                            Status: ${response.status}
+                        </div>
+                    `;
+                    document.getElementById('check-frontend').classList.add('pass');
+                    document.getElementById('status-frontend').textContent = 'Running';
+                    document.getElementById('status-frontend').className = 'status success';
+                } else {
+                    resultsDiv.innerHTML = `
+                        <div class="result error-result">
+                            ⚠️ Frontend loaded but might have issues
+                            Check browser console (F12) for errors
+                        </div>
+                    `;
+                }
+            } catch (error) {
+                resultsDiv.innerHTML = `
+                    <div class="result error-result">
+                        ❌ Frontend not accessible
+                        ${error.message}
+                        
+                        Run: npm run dev
+                    </div>
+                `;
+                document.getElementById('check-frontend').classList.add('fail');
+                document.getElementById('status-frontend').textContent = 'Not Running';
+                document.getElementById('status-frontend').className = 'status error';
+            }
+        }
+
+        function showApplicationsError(error) {
+            const recommendationsDiv = document.getElementById('recommendations');
+            recommendationsDiv.innerHTML = `
+                <h3 style="color: #dc3545;">🚨 Applications Endpoint Failed!</h3>
+                <p><strong>Error:</strong> ${error}</p>
+                
+                <div class="warning-box">
+                    <h4>This is the most common issue!</h4>
+                    <p>The <code>property_applications</code> table doesn't exist in your database.</p>
+                </div>
+                
+                <h4>✅ Solution:</h4>
+                <ol>
+                    <li><strong>Go to Supabase Dashboard:</strong>
+                        <br>→ <a href="https://saiceqyaootvkdenxbqx.supabase.co" target="_blank">https://saiceqyaootvkdenxbqx.supabase.co</a>
+                    </li>
+                    <li><strong>Open SQL Editor</strong></li>
+                    <li><strong>Run this SQL:</strong>
+                        <pre style="background: #f5f5f5; padding: 10px; border-radius: 4px; overflow-x: auto;">
+CREATE TABLE IF NOT EXISTS property_applications (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    property_id UUID REFERENCES properties(id) ON DELETE CASCADE,
+    applicant_id UUID REFERENCES users(id) ON DELETE CASCADE,
+    status TEXT DEFAULT 'submitted',
+    employment_status TEXT,
+    monthly_income_usdc DECIMAL(20,6),
+    ai_compatibility_score DECIMAL(5,2),
+    ai_risk_score DECIMAL(5,2),
+    ai_analysis JSONB,
+    requested_move_in_date DATE,
+    references JSONB DEFAULT '[]',
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+                        </pre>
+                    </li>
+                    <li><strong>Test again</strong> by clicking "Test Applications" button above</li>
+                    <li><strong>Refresh your browser:</strong> Ctrl + Shift + R</li>
+                </ol>
+            `;
+            document.getElementById('check-db').classList.add('fail');
+            document.getElementById('status-db').textContent = 'Migration Needed';
+            document.getElementById('status-db').className = 'status error';
+        }
+
+        function updateRecommendations() {
+            const checks = {
+                frontend: document.getElementById('check-frontend').classList.contains('pass'),
+                backend: document.getElementById('check-backend').classList.contains('pass'),
+                stats: document.getElementById('check-stats').classList.contains('pass'),
+                properties: document.getElementById('check-properties').classList.contains('pass'),
+                applications: document.getElementById('check-applications').classList.contains('pass')
+            };
+
+            const recommendationsDiv = document.getElementById('recommendations');
+            
+            if (checks.applications && checks.properties && checks.stats) {
+                recommendationsDiv.innerHTML = `
+                    <h3 style="color: #28a745;">✅ All Backend Tests Passed!</h3>
+                    <p>Your backend is working correctly.</p>
+                    
+                    <h4>Next Steps:</h4>
+                    <ol>
+                        <li>Hard refresh your browser: <strong>Ctrl + Shift + R</strong></li>
+                        <li>Open browser console: <strong>F12</strong></li>
+                        <li>Check for JavaScript errors in the Console tab</li>
+                        <li>Check Network tab to see if API calls are being made</li>
+                        <li>Login and describe what you see (or don't see)</li>
+                    </ol>
+                    
+                    <div class="info-box">
+                        <strong>If dashboard still looks empty:</strong><br>
+                        - Check if you're logged in as the correct role (manager vs tenant)<br>
+                        - Open F12 → Console and look for errors<br>
+                        - Take a screenshot and share what you see
+                    </div>
+                `;
+            } else if (!checks.applications) {
+                // Already handled by showApplicationsError
+            } else {
+                recommendationsDiv.innerHTML = `
+                    <h3 style="color: #ffc107;">⚠️ Some Tests Failed</h3>
+                    <p>Check the results above and fix the failing endpoints.</p>
+                `;
+            }
+        }
+
+        // Auto-run basic checks on load
+        window.addEventListener('load', () => {
+            setTimeout(() => {
+                testFrontend();
+                setTimeout(() => testAllEndpoints(), 500);
+            }, 500);
+        });
+    </script>
+</body>
+</html>

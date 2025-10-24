@@ -10,7 +10,7 @@ interface UserProfile {
   id: string;
   email: string;
   full_name: string;
-  role: 'manager' | 'tenant' | 'admin' | 'ai_agent';
+  role: 'manager' | 'tenant' | 'prospective_tenant' | 'admin' | 'ai_agent';
   user_type: string;
   is_active: boolean;
   wallet_address?: string;
@@ -23,8 +23,9 @@ interface AuthContextType {
   session: Session | null;
   loading: boolean;
   signIn: (email: string, password: string) => Promise<{ error?: any }>;
-  signUp: (email: string, password: string, fullName: string) => Promise<{ error?: any }>;
+  signUp: (email: string, password: string, fullName: string, role?: string) => Promise<{ error?: any }>;
   signOut: () => Promise<void>;
+  refreshUserProfile: () => Promise<void>; // NEW: Force refresh user profile
   supabase: typeof supabase;
 }
 
@@ -106,23 +107,43 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     // Get initial session
     const initializeAuth = async () => {
       try {
+        console.log('🔐 [AuthContext] Initializing auth...');
         const { data: { session } } = await supabase.auth.getSession();
         
-        if (!mounted) return;
+        console.log('📊 [AuthContext] Session status:', session ? 'Active' : 'None');
+        if (session) {
+          console.log('   User ID:', session.user.id);
+          console.log('   Email:', session.user.email);
+        }
+        
+        if (!mounted) {
+          console.log('⚠️  [AuthContext] Component unmounted, skipping state update');
+          return;
+        }
         
         setSession(session);
         setUser(session?.user ?? null);
         
         if (session?.user) {
+          console.log('📊 [AuthContext] Fetching profile for authenticated user...');
           const profile = await fetchUserProfile(session.user.id);
           if (mounted) {
-            setUserProfile(profile);
+            if (profile) {
+              console.log('✅ [AuthContext] Profile loaded and set');
+              setUserProfile(profile);
+            } else {
+              console.error('❌ [AuthContext] Profile not found - user may need to be created in database');
+              setUserProfile(null);
+            }
           }
+        } else {
+          console.log('🚫 [AuthContext] No active session');
         }
       } catch (error) {
         console.error('❌ [AuthContext] Error initializing auth:', error);
       } finally {
         if (mounted) {
+          console.log('✅ [AuthContext] Auth initialization complete, setting loading to false');
           setLoading(false);
         }
       }
@@ -133,18 +154,21 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     // Listen for auth changes
     const {
       data: { subscription },
-    } = supabase.auth.onAuthStateChange(async (_event, session) => {
+    } = supabase.auth.onAuthStateChange(async (event, session) => {
+      console.log('🔄 [AuthContext] Auth state changed:', event);
       if (!mounted) return;
       
       setSession(session);
       setUser(session?.user ?? null);
       
       if (session?.user) {
+        console.log('📊 [AuthContext] Auth change - fetching profile...');
         const profile = await fetchUserProfile(session.user.id);
         if (mounted) {
           setUserProfile(profile);
         }
       } else {
+        console.log('🚫 [AuthContext] Auth change - no session, clearing profile');
         if (mounted) {
           setUserProfile(null);
         }
@@ -152,32 +176,64 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     });
 
     return () => {
+      console.log('🧹 [AuthContext] Cleaning up subscription');
       mounted = false;
       subscription.unsubscribe();
     };
   }, []);
 
   const signIn = async (email: string, password: string) => {
-    const { error, data } = await supabase.auth.signInWithPassword({
-      email,
-      password,
-    });
-    
-    if (!error && data.user) {
-      const profile = await fetchUserProfile(data.user.id);
-      setUserProfile(profile);
+    try {
+      console.log('🔐 [AuthContext] Signing in...', email);
+      console.log('🌐 [AuthContext] Using Supabase URL:', process.env.REACT_APP_SUPABASE_URL);
+      console.log('🔑 [AuthContext] API Key present:', !!process.env.REACT_APP_SUPABASE_KEY);
+      
+      const { error, data } = await supabase.auth.signInWithPassword({
+        email,
+        password,
+      });
+      
+      if (error) {
+        console.error('❌ [AuthContext] Sign in error:', error.message);
+        console.error('   Error status:', error.status);
+        console.error('   Error name:', error.name);
+        return { error };
+      }
+      
+      console.log('✅ [AuthContext] Auth sign in successful');
+      console.log('   User ID:', data.user?.id);
+      console.log('   Email:', data.user?.email);
+      
+      if (data.user) {
+        console.log('📊 [AuthContext] Fetching user profile...');
+        const profile = await fetchUserProfile(data.user.id);
+        if (profile) {
+          console.log('✅ [AuthContext] Profile loaded successfully');
+          console.log('   Profile role:', profile.role);
+          setUserProfile(profile);
+        } else {
+          console.error('❌ [AuthContext] Failed to load user profile');
+          console.error('   This means auth succeeded but profile fetch failed');
+          console.error('   User may not exist in public.users table');
+          return { error: { message: 'User profile not found in database' } };
+        }
+      }
+      
+      return { error: null };
+    } catch (err) {
+      console.error('❌ [AuthContext] Exception during sign in:', err);
+      return { error: err };
     }
-    
-    return { error };
   };
 
-  const signUp = async (email: string, password: string, fullName: string) => {
+  const signUp = async (email: string, password: string, fullName: string, role?: string) => {
     const { error } = await supabase.auth.signUp({
       email,
       password,
       options: {
         data: {
           full_name: fullName,
+          role: role || 'prospective_tenant', // Pass role to metadata
         },
       },
     });
@@ -189,6 +245,24 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setUserProfile(null);
   };
 
+  // NEW: Force refresh user profile (useful after role changes)
+  const refreshUserProfile = async () => {
+    if (!user?.id) {
+      console.warn('⚠️ [AuthContext] Cannot refresh profile - no user ID');
+      return;
+    }
+    
+    console.log('🔄 [AuthContext] Force refreshing user profile...');
+    const profile = await fetchUserProfile(user.id);
+    if (profile) {
+      console.log('✅ [AuthContext] Profile refreshed successfully');
+      console.log('   New role:', profile.role);
+      setUserProfile(profile);
+    } else {
+      console.error('❌ [AuthContext] Failed to refresh profile');
+    }
+  };
+
   const value = {
     user,
     userProfile,
@@ -197,6 +271,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     signIn,
     signUp,
     signOut,
+    refreshUserProfile,
     supabase,
   };
 

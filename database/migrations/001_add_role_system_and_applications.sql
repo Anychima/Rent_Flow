@@ -50,7 +50,7 @@ CREATE TABLE IF NOT EXISTS property_applications (
     reason_for_moving TEXT,
     
     -- References
-    references JSONB DEFAULT '[]',
+    applicant_references JSONB DEFAULT '[]',
     
     -- AI Scoring
     ai_compatibility_score DECIMAL(5,2),

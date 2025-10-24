@@ -1,6 +1,8 @@
-import React, { useState, useEffect } from 'react';
-import { Search, MapPin, Home, Bed, Bath, DollarSign, Heart, Filter } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { Search, MapPin, Home, Bed, Bath, DollarSign, Heart, Filter, User, LogOut, FileText } from 'lucide-react';
 import axios from 'axios';
+import { useAuth } from '../contexts/AuthContext';
 
 interface Property {
   id: string;
@@ -23,6 +25,15 @@ interface Property {
 }
 
 const PublicPropertyListings: React.FC = () => {
+  const navigate = useNavigate();
+  const { user, userProfile, signOut } = useAuth();
+  
+  // Debug logging for authentication state
+  console.log('🏠 [PublicPropertyListings] Component rendered');
+  console.log('   User:', user);
+  console.log('   UserProfile:', userProfile);
+  console.log('   Is Authenticated:', !!user && !!userProfile);
+  
   const [properties, setProperties] = useState<Property[]>([]);
   const [filteredProperties, setFilteredProperties] = useState<Property[]>([]);
   const [loading, setLoading] = useState(true);
@@ -99,7 +110,10 @@ const PublicPropertyListings: React.FC = () => {
       : getPlaceholderImage();
 
     return (
-      <div className="bg-white rounded-lg shadow-md overflow-hidden hover:shadow-xl transition-all duration-300 cursor-pointer transform hover:-translate-y-1">
+      <div 
+        onClick={() => navigate(`/property/${property.id}`)}
+        className="bg-white rounded-lg shadow-md overflow-hidden hover:shadow-xl transition-all duration-300 cursor-pointer transform hover:-translate-y-1"
+      >
           {/* Property Image */}
           <div className="relative h-56 bg-gradient-to-br from-blue-50 to-indigo-100 overflow-hidden group">
             <img
@@ -209,8 +223,7 @@ const PublicPropertyListings: React.FC = () => {
                 className="bg-gradient-to-r from-blue-600 to-indigo-600 text-white px-6 py-2.5 rounded-lg hover:from-blue-700 hover:to-indigo-700 transition-all duration-200 text-sm font-semibold shadow-md hover:shadow-lg transform hover:scale-105"
                 onClick={(e) => {
                   e.stopPropagation();
-                  // TODO: Navigate to property detail page
-                  alert(`Viewing details for ${property.title}`);
+                  navigate(`/property/${property.id}`);
                 }}
               >
                 View Details
@@ -260,18 +273,47 @@ const PublicPropertyListings: React.FC = () => {
               </p>
             </div>
             <div className="flex space-x-3">
-              <button
-                onClick={() => window.location.href = '/login'}
-                className="px-5 py-2.5 text-gray-700 hover:text-gray-900 font-semibold border border-gray-300 rounded-lg hover:border-gray-400 transition-all duration-200"
-              >
-                Login
-              </button>
-              <button
-                onClick={() => window.location.href = '/signup'}
-                className="px-6 py-2.5 bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-lg hover:from-blue-700 hover:to-indigo-700 font-semibold shadow-lg hover:shadow-xl transition-all duration-200 transform hover:scale-105"
-              >
-                Sign Up Free
-              </button>
+              {user && userProfile ? (
+                // Authenticated user menu
+                <>
+                  <div className="flex items-center space-x-4">
+                    <div className="flex items-center space-x-2 px-4 py-2 bg-blue-50 rounded-lg">
+                      <User className="w-5 h-5 text-blue-600" />
+                      <span className="text-sm font-medium text-gray-700">{userProfile.email}</span>
+                    </div>
+                    <button
+                      onClick={() => navigate('/my-applications')}
+                      className="flex items-center space-x-2 px-5 py-2.5 text-gray-700 hover:text-gray-900 font-semibold border border-gray-300 rounded-lg hover:border-gray-400 transition-all duration-200"
+                    >
+                      <FileText className="w-4 h-4" />
+                      <span>My Applications</span>
+                    </button>
+                    <button
+                      onClick={signOut}
+                      className="flex items-center space-x-2 px-5 py-2.5 text-red-600 hover:text-red-700 font-semibold border border-red-300 rounded-lg hover:border-red-400 transition-all duration-200"
+                    >
+                      <LogOut className="w-4 h-4" />
+                      <span>Sign Out</span>
+                    </button>
+                  </div>
+                </>
+              ) : (
+                // Guest user buttons
+                <>
+                  <button
+                    onClick={() => window.location.href = '/login'}
+                    className="px-5 py-2.5 text-gray-700 hover:text-gray-900 font-semibold border border-gray-300 rounded-lg hover:border-gray-400 transition-all duration-200"
+                  >
+                    Login
+                  </button>
+                  <button
+                    onClick={() => window.location.href = '/signup'}
+                    className="px-6 py-2.5 bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-lg hover:from-blue-700 hover:to-indigo-700 font-semibold shadow-lg hover:shadow-xl transition-all duration-200 transform hover:scale-105"
+                  >
+                    Sign Up Free
+                  </button>
+                </>
+              )}
             </div>
           </div>
         </div>
