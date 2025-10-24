@@ -299,15 +299,68 @@ app.get('/api/properties', async (req: Request, res: Response) => {
 // Get public properties (no auth required) - MUST be before :id route
 app.get('/api/properties/public', async (_req: Request, res: Response) => {
   try {
-    const { data, error } = await supabase
+    // Get all active properties with their lease information
+    const { data: properties, error } = await supabase
       .from('properties')
-      .select('*')
+      .select(`
+        *,
+        leases (
+          id,
+          lease_status,
+          status,
+          start_date,
+          end_date
+        )
+      `)
       .eq('is_active', true)
       .order('created_at', { ascending: false });
 
     if (error) throw error;
 
-    res.json({ success: true, data });
+    // Filter and enrich properties with availability status
+    const enrichedProperties = properties
+      ?.map((property: any) => {
+        // Check if property has any active or pending leases
+        const activeLeases = property.leases?.filter((lease: any) => {
+          const leaseStatus = lease.lease_status || lease.status;
+          return (
+            leaseStatus === 'active' ||
+            leaseStatus === 'pending_tenant' ||
+            leaseStatus === 'pending_landlord' ||
+            leaseStatus === 'fully_signed'
+          );
+        });
+
+        // Determine availability status
+        let availabilityStatus = 'available';
+        if (activeLeases && activeLeases.length > 0) {
+          const lease = activeLeases[0];
+          const leaseStatus = lease.lease_status || lease.status;
+          
+          if (leaseStatus === 'active') {
+            availabilityStatus = 'rented';
+          } else if (leaseStatus === 'pending_tenant') {
+            availabilityStatus = 'pending_tenant_signature';
+          } else if (leaseStatus === 'pending_landlord') {
+            availabilityStatus = 'pending_landlord_signature';
+          } else if (leaseStatus === 'fully_signed') {
+            availabilityStatus = 'lease_signed';
+          }
+        }
+
+        // Remove leases from response and add availability status
+        const { leases, ...propertyData } = property;
+        return {
+          ...propertyData,
+          availability_status: availabilityStatus
+        };
+      })
+      // Filter out properties that are rented or have active leases
+      .filter((property: any) => property.availability_status === 'available');
+
+    console.log(`📋 [Public Properties] Returning ${enrichedProperties?.length || 0} available properties out of ${properties?.length || 0} total active properties`);
+
+    res.json({ success: true, data: enrichedProperties });
   } catch (error) {
     console.error('Error fetching public properties:', error);
     res.status(500).json({ 

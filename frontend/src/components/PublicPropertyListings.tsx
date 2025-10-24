@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Search, MapPin, Home, Bed, Bath, DollarSign, Heart, Filter, User, LogOut, FileText } from 'lucide-react';
+import { Search, MapPin, Home, Bed, Bath, DollarSign, Heart, Filter, User, LogOut, FileText, CheckCircle } from 'lucide-react';
 import axios from 'axios';
 import { useAuth } from '../contexts/AuthContext';
 
@@ -22,6 +22,7 @@ interface Property {
   parking_available: boolean;
   view_count: number;
   application_count: number;
+  availability_status?: 'available' | 'pending_tenant_signature' | 'pending_landlord_signature' | 'lease_signed' | 'rented';
 }
 
 const PublicPropertyListings: React.FC = () => {
@@ -110,6 +111,23 @@ const PublicPropertyListings: React.FC = () => {
       ? property.image_urls[0] 
       : getPlaceholderImage();
 
+    // Get status badge configuration
+    const getStatusBadge = () => {
+      const status = property.availability_status || 'available';
+      
+      const statusConfig: { [key: string]: { label: string; bgColor: string; icon: string } } = {
+        available: { label: 'Available', bgColor: 'bg-green-500', icon: '✓' },
+        pending_tenant_signature: { label: 'Tenant Signing', bgColor: 'bg-yellow-500', icon: '✍️' },
+        pending_landlord_signature: { label: 'Manager Review', bgColor: 'bg-orange-500', icon: '📋' },
+        lease_signed: { label: 'Processing', bgColor: 'bg-blue-500', icon: '⏳' },
+        rented: { label: 'Rented', bgColor: 'bg-gray-500', icon: '🏠' },
+      };
+
+      return statusConfig[status] || statusConfig.available;
+    };
+
+    const statusBadge = getStatusBadge();
+
     return (
       <div 
         onClick={() => navigate(`/property/${property.id}`)}
@@ -140,6 +158,12 @@ const PublicPropertyListings: React.FC = () => {
             {/* Property Type Badge */}
             <div className="absolute top-3 left-3 bg-blue-600 text-white px-3 py-1 rounded-full text-xs font-semibold uppercase tracking-wide shadow-lg">
               {property.property_type}
+            </div>
+            
+            {/* Availability Status Badge */}
+            <div className={`absolute top-3 right-16 ${statusBadge.bgColor} text-white px-3 py-1 rounded-full text-xs font-semibold shadow-lg flex items-center gap-1`}>
+              <span>{statusBadge.icon}</span>
+              <span>{statusBadge.label}</span>
             </div>
             
             {/* Pet Friendly Badge */}
