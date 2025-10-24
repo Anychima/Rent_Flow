@@ -14,8 +14,7 @@ interface CircleWalletInputModalProps {
 const CircleWalletInputModal: React.FC<CircleWalletInputModalProps> = ({
   isOpen,
   onClose,
-  onSubmit,
-  role
+  onSubmit
 }) => {
   const [walletId, setWalletId] = useState('');
   const [error, setError] = useState('');
