@@ -16,7 +16,7 @@ interface Property {
   bathrooms: number;
   square_feet: number;
   property_type: string;
-  images: string[];
+  image_urls?: string[]; // Changed from images to image_urls to match database
   amenities: string[];
   pet_friendly: boolean;
   parking_available: boolean;
@@ -105,8 +105,9 @@ const PublicPropertyListings: React.FC = () => {
       return propertyTypeImages[property.property_type] || 'https://images.unsplash.com/photo-1560448204-e02f11c3d0e2?w=600&h=400&fit=crop';
     };
 
-    const mainImage = (property.images && property.images.length > 0) 
-      ? property.images[0] 
+    // Use uploaded images if available, otherwise use placeholder
+    const mainImage = (property.image_urls && property.image_urls.length > 0) 
+      ? property.image_urls[0] 
       : getPlaceholderImage();
 
     return (

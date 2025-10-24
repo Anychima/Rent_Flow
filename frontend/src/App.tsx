@@ -50,6 +50,7 @@ interface Property {
   square_feet: number;
   amenities: string[];
   is_active: boolean;
+  image_urls?: string[]; // Support for multiple uploaded images
 }
 
 interface Lease {
@@ -919,11 +920,36 @@ function Dashboard() {
               </div>
             ) : (
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                {filteredProperties.map((property) => (
-                <div key={property.id} className="bg-white rounded-lg shadow-md overflow-hidden hover:shadow-lg transition-shadow">
-                  <div className="h-48 bg-gradient-to-br from-blue-400 to-purple-500 flex items-center justify-center">
-                    <span className="text-6xl">🏠</span>
-                  </div>
+                {filteredProperties.map((property) => {
+                  // Get placeholder image based on property type
+                  const getPlaceholderImage = () => {
+                    const types: { [key: string]: string } = {
+                      apartment: 'https://images.unsplash.com/photo-1545324418-cc1a3fa10c00?w=400&h=300&fit=crop',
+                      house: 'https://images.unsplash.com/photo-1568605114967-8130f3a36994?w=400&h=300&fit=crop',
+                      condo: 'https://images.unsplash.com/photo-1512917774080-9991f1c4c750?w=400&h=300&fit=crop',
+                      studio: 'https://images.unsplash.com/photo-1522708323590-d24dbb6b0267?w=400&h=300&fit=crop',
+                    };
+                    return types[property.property_type] || 'https://images.unsplash.com/photo-1560448204-e02f11c3d0e2?w=400&h=300&fit=crop';
+                  };
+                  
+                  const propertyImage = (property.image_urls && property.image_urls.length > 0) 
+                    ? property.image_urls[0] 
+                    : getPlaceholderImage();
+                  
+                  return (
+                    <div key={property.id} className="bg-white rounded-lg shadow-md overflow-hidden hover:shadow-lg transition-shadow">
+                      <div className="h-48 bg-gradient-to-br from-blue-400 to-purple-500 flex items-center justify-center overflow-hidden">
+                        <img 
+                          src={propertyImage} 
+                          alt={property.title}
+                          className="w-full h-full object-cover"
+                          onError={(e) => {
+                            // Fallback to emoji if image fails to load
+                            (e.target as HTMLImageElement).style.display = 'none';
+                            (e.target as HTMLElement).parentElement!.innerHTML = '<span class="text-6xl">🏠</span>';
+                          }}
+                        />
+                      </div>
                   <div className="p-5">
                     <h3 className="text-lg font-semibold text-gray-900 mb-2">{property.title}</h3>
                     <p className="text-sm text-gray-600 mb-4">{property.address}, {property.city}, {property.state}</p>
@@ -954,7 +980,8 @@ function Dashboard() {
                     </div>
                   </div>
                 </div>
-                ))}
+                  );
+                })}
               </div>
             )}
           </div>
