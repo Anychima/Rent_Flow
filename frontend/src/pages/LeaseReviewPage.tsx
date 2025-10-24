@@ -683,7 +683,6 @@ const LeaseReviewPage: React.FC = () => {
         isOpen={showCircleWalletModal}
         onClose={() => setShowCircleWalletModal(false)}
         onSubmit={handleCircleWalletSubmit}
-        role="manager"
       />
     </div>
   );
