@@ -89,9 +89,13 @@ export async function connectPhantomWallet(userId?: string, role?: 'manager' | '
 /**
  * Connect to Circle wallet
  */
-export async function connectCircleWallet(userId: string, role: 'manager' | 'tenant'): Promise<WalletConnection> {
+export async function connectCircleWallet(
+  userId: string, 
+  role: 'manager' | 'tenant',
+  walletId?: string
+): Promise<WalletConnection> {
   try {
-    const wallet = await circleWalletService.getCircleWallet(userId, role);
+    const wallet = await circleWalletService.getCircleWallet(userId, role, walletId);
     
     if (!wallet || !wallet.address) {
       return {
@@ -116,6 +120,16 @@ export async function connectCircleWallet(userId: string, role: 'manager' | 'ten
       publicKey: wallet.address
     };
   } catch (error) {
+    // Check if error is REQUIRES_WALLET_ID
+    if (error instanceof Error && error.message === 'REQUIRES_WALLET_ID') {
+      return {
+        type: 'circle',
+        connected: false,
+        success: false,
+        error: 'REQUIRES_WALLET_ID' // Special flag for UI to show modal
+      };
+    }
+    
     console.error('❌ [Circle] Connection failed:', error);
     return {
       type: 'circle',

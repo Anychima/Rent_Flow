@@ -124,6 +124,49 @@ export async function verifyCircleSignature(
 }
 
 /**
+ * Verify and retrieve an existing Circle wallet by ID
+ * This allows users to connect their pre-existing Circle wallets
+ */
+export async function verifyCircleWallet(walletId: string): Promise<{
+  walletId: string;
+  address: string;
+  error?: string;
+}> {
+  try {
+    console.log('🔍 [Circle] Verifying wallet:', walletId);
+
+    // Get wallet details from Circle API
+    const response = await circleClient.getWallet({ id: walletId });
+    
+    if (!response.data?.wallet) {
+      throw new Error('Wallet not found or invalid wallet ID');
+    }
+
+    const wallet = response.data.wallet;
+    const walletAddress = wallet.address;
+
+    console.log('✅ [Circle] Wallet verified:', {
+      walletId,
+      address: walletAddress,
+      blockchain: wallet.blockchain
+    });
+
+    return {
+      walletId,
+      address: walletAddress
+    };
+
+  } catch (error) {
+    console.error('❌ [Circle] Error verifying wallet:', error);
+    return {
+      walletId: '',
+      address: '',
+      error: error instanceof Error ? error.message : 'Invalid wallet ID'
+    };
+  }
+}
+
+/**
  * Create a new Circle wallet for a user
  * Actually creates a wallet using Circle API
  */
@@ -173,28 +216,53 @@ export async function createCircleWallet(userId: string, role: 'manager' | 'tena
 
 /**
  * Get or create Circle wallet for a user
- * First checks if wallet exists in Circle, otherwise creates one
+ * First checks database for existing wallet, allows manual input, or creates new one
  */
-export async function getOrCreateUserWallet(userId: string, role: 'manager' | 'tenant'): Promise<{
+export async function getOrCreateUserWallet(userId: string, role: 'manager' | 'tenant', providedWalletId?: string): Promise<{
   walletId: string;
   address: string;
   error?: string;
+  requiresInput?: boolean;
 }> {
   try {
     console.log('💼 [Circle] Getting or creating wallet for user:', userId, 'role:', role);
 
-    // For now, always create a new wallet
-    // In production, you'd check database first to see if user already has a wallet
-    const result = await createCircleWallet(userId, role);
+    // If user provided a wallet ID, verify and use it
+    if (providedWalletId) {
+      console.log('🔑 [Circle] User provided wallet ID, verifying...');
+      const result = await verifyCircleWallet(providedWalletId);
+      
+      if (result.error) {
+        return {
+          walletId: '',
+          address: '',
+          error: result.error,
+          requiresInput: true
+        };
+      }
+      
+      return result;
+    }
+
+    // Check if user already has a wallet in database
+    // TODO: Implement database lookup
+    // For now, return a flag indicating user needs to provide wallet ID
+    console.log('⚠️ [Circle] No wallet ID provided, user needs to input their Circle wallet ID');
     
-    return result;
+    return {
+      walletId: '',
+      address: '',
+      error: 'Please provide your Circle wallet ID to continue',
+      requiresInput: true
+    };
 
   } catch (error) {
     console.error('❌ [Circle] Error in getOrCreateUserWallet:', error);
     return {
       walletId: '',
       address: '',
-      error: error instanceof Error ? error.message : 'Unknown error'
+      error: error instanceof Error ? error.message : 'Unknown error',
+      requiresInput: true
     };
   }
 }
@@ -217,5 +285,6 @@ export default {
   verifyCircleSignature,
   getUserCircleWallet,
   getOrCreateUserWallet,
-  createCircleWallet
+  createCircleWallet,
+  verifyCircleWallet
 };

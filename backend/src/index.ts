@@ -140,7 +140,7 @@ app.get('/api/blockchain/wallet/:address/balance', async (req: Request, res: Res
 app.get('/api/circle/wallet/:userId', async (req: Request, res: Response) => {
   try {
     const { userId } = req.params;
-    const { role } = req.query as { role?: 'manager' | 'tenant' };
+    const { role, walletId } = req.query as { role?: 'manager' | 'tenant'; walletId?: string };
 
     if (!userId || !role) {
       return res.status(400).json({
@@ -152,12 +152,13 @@ app.get('/api/circle/wallet/:userId', async (req: Request, res: Response) => {
     console.log(`💼 [Circle API] Getting wallet for user: ${userId}, role: ${role}`);
 
     // Get wallet info from Circle signing service
-    const result = await circleSigningService.getOrCreateUserWallet(userId, role);
+    const result = await circleSigningService.getOrCreateUserWallet(userId, role, walletId);
 
     if (result.error) {
-      return res.status(500).json({
+      return res.status(result.requiresInput ? 200 : 500).json({
         success: false,
-        error: result.error
+        error: result.error,
+        requiresInput: result.requiresInput
       });
     }
 
