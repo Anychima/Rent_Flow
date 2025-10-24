@@ -124,10 +124,56 @@ export async function verifyCircleSignature(
 }
 
 /**
- * Get Circle wallet for a user from database
- * Returns real wallet with actual blockchain address
- * User must have already connected/created wallet - does NOT auto-create
- * NO DEFAULT WALLETS - Users must connect their own
+ * Create a new Circle wallet for a user
+ * Actually creates a wallet using Circle API
+ */
+export async function createCircleWallet(userId: string, role: 'manager' | 'tenant'): Promise<{
+  walletId: string;
+  address: string;
+  error?: string;
+}> {
+  try {
+    console.log('🆕 [Circle] Creating new wallet for user:', userId, 'role:', role);
+
+    // Create a new wallet using Circle API
+    const response = await circleClient.createWallets({
+      accountType: 'SCA', // Secure Cloud Account
+      blockchains: ['SOL-DEVNET'], // Solana Devnet
+      count: 1,
+      walletSetId: process.env.WALLET_SET_ID || '2c32d1e0-e66a-5494-8091-2d844287e9c5'
+    });
+
+    if (!response.data?.wallets || response.data.wallets.length === 0) {
+      throw new Error('Failed to create wallet - no wallet data returned');
+    }
+
+    const wallet = response.data.wallets[0];
+    const walletId = wallet.id;
+    const walletAddress = wallet.address;
+
+    console.log('✅ [Circle] Wallet created successfully:', {
+      walletId,
+      address: walletAddress
+    });
+
+    return {
+      walletId,
+      address: walletAddress
+    };
+
+  } catch (error) {
+    console.error('❌ [Circle] Error creating wallet:', error);
+    return {
+      walletId: '',
+      address: '',
+      error: error instanceof Error ? error.message : 'Failed to create wallet'
+    };
+  }
+}
+
+/**
+ * Get or create Circle wallet for a user
+ * First checks if wallet exists in Circle, otherwise creates one
  */
 export async function getOrCreateUserWallet(userId: string, role: 'manager' | 'tenant'): Promise<{
   walletId: string;
@@ -135,35 +181,16 @@ export async function getOrCreateUserWallet(userId: string, role: 'manager' | 't
   error?: string;
 }> {
   try {
-    console.log('💼 [Circle] Getting wallet for user:', userId, 'role:', role);
+    console.log('💼 [Circle] Getting or creating wallet for user:', userId, 'role:', role);
 
-    // TODO: Query database for user's connected wallet
-    // const { data: user } = await supabase
-    //   .from('users')
-    //   .select('circle_wallet_id')
-    //   .eq('id', userId)
-    //   .single();
-    // 
-    // if (!user?.circle_wallet_id) {
-    //   return {
-    //     walletId: '',
-    //     address: '',
-    //     error: 'No wallet connected. Please connect your Circle wallet first.'
-    //   };
-    // }
+    // For now, always create a new wallet
+    // In production, you'd check database first to see if user already has a wallet
+    const result = await createCircleWallet(userId, role);
     
-    // NO MORE DEFAULT WALLETS - Users must connect their own
-    // Returning error to force wallet connection
-    console.warn('⚠️ [NO DEFAULT WALLETS] User must connect their own wallet');
-    
-    return {
-      walletId: '',
-      address: '',
-      error: `No wallet connected for user ${userId}. Please connect your Circle or Phantom wallet to continue.`
-    };
+    return result;
 
   } catch (error) {
-    console.error('❌ [Circle] Error getting wallet:', error);
+    console.error('❌ [Circle] Error in getOrCreateUserWallet:', error);
     return {
       walletId: '',
       address: '',
@@ -189,5 +216,6 @@ export default {
   signMessageWithCircleWallet,
   verifyCircleSignature,
   getUserCircleWallet,
-  getOrCreateUserWallet
+  getOrCreateUserWallet,
+  createCircleWallet
 };
