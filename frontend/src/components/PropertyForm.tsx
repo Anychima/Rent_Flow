@@ -16,6 +16,7 @@ interface Property {
   security_deposit_usdc: number;
   amenities: string[];
   is_active: boolean;
+  image_url?: string;
 }
 
 interface PropertyFormProps {
@@ -34,6 +35,8 @@ const AMENITY_OPTIONS = [
 
 export default function PropertyForm({ property, onClose, onSubmit }: PropertyFormProps) {
   const [loading, setLoading] = useState(false);
+  const [imageFile, setImageFile] = useState<File | null>(null);
+  const [imagePreview, setImagePreview] = useState<string>('');
   const [formData, setFormData] = useState<Partial<Property>>({
     title: '',
     description: '',
@@ -49,13 +52,49 @@ export default function PropertyForm({ property, onClose, onSubmit }: PropertyFo
     security_deposit_usdc: 2000,
     amenities: [],
     is_active: true,
+    image_url: '',
   });
 
   useEffect(() => {
     if (property) {
       setFormData(property);
+      if (property.image_url) {
+        setImagePreview(property.image_url);
+      }
     }
   }, [property]);
+
+  const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      // Validate file type
+      if (!file.type.startsWith('image/')) {
+        alert('Please select an image file');
+        return;
+      }
+      
+      // Validate file size (max 5MB)
+      if (file.size > 5 * 1024 * 1024) {
+        alert('Image size must be less than 5MB');
+        return;
+      }
+
+      setImageFile(file);
+      
+      // Create preview
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setImagePreview(reader.result as string);
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
+  const handleRemoveImage = () => {
+    setImageFile(null);
+    setImagePreview('');
+    setFormData(prev => ({ ...prev, image_url: '' }));
+  };
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
     const { name, value, type } = e.target;
@@ -78,7 +117,16 @@ export default function PropertyForm({ property, onClose, onSubmit }: PropertyFo
     e.preventDefault();
     setLoading(true);
     try {
-      await onSubmit(formData);
+      // If there's an image file, convert to base64
+      let imageData = formData.image_url;
+      if (imageFile) {
+        imageData = imagePreview; // This is already base64 from FileReader
+      }
+      
+      await onSubmit({
+        ...formData,
+        image_url: imageData
+      });
       onClose();
     } catch (error) {
       console.error('Error submitting property:', error);
@@ -111,6 +159,55 @@ export default function PropertyForm({ property, onClose, onSubmit }: PropertyFo
           <div>
             <h3 className="text-lg font-semibold text-gray-900 mb-4">Basic Information</h3>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {/* Property Image Upload */}
+              <div className="md:col-span-2">
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Property Image
+                </label>
+                <div className="space-y-3">
+                  {imagePreview ? (
+                    <div className="relative inline-block">
+                      <img
+                        src={imagePreview}
+                        alt="Property preview"
+                        className="h-48 w-full object-cover rounded-lg border-2 border-gray-200"
+                      />
+                      <button
+                        type="button"
+                        onClick={handleRemoveImage}
+                        className="absolute top-2 right-2 bg-red-500 text-white p-2 rounded-full hover:bg-red-600 transition-colors"
+                      >
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                        </svg>
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center hover:border-blue-500 transition-colors">
+                      <input
+                        type="file"
+                        id="property-image"
+                        accept="image/*"
+                        onChange={handleImageChange}
+                        className="hidden"
+                      />
+                      <label
+                        htmlFor="property-image"
+                        className="cursor-pointer"
+                      >
+                        <div className="flex flex-col items-center">
+                          <svg className="w-12 h-12 text-gray-400 mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                          </svg>
+                          <span className="text-sm font-medium text-gray-700">Click to upload property image</span>
+                          <span className="text-xs text-gray-500 mt-1">PNG, JPG up to 5MB</span>
+                        </div>
+                      </label>
+                    </div>
+                  )}
+                </div>
+              </div>
+
               <div className="md:col-span-2">
                 <label className="block text-sm font-medium text-gray-700 mb-2">
                   Property Title *

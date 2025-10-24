@@ -127,6 +127,7 @@ export async function verifyCircleSignature(
  * Get Circle wallet for a user from database
  * Returns real wallet with actual blockchain address
  * User must have already connected/created wallet - does NOT auto-create
+ * NO DEFAULT WALLETS - Users must connect their own
  */
 export async function getOrCreateUserWallet(userId: string, role: 'manager' | 'tenant'): Promise<{
   walletId: string;
@@ -136,50 +137,29 @@ export async function getOrCreateUserWallet(userId: string, role: 'manager' | 't
   try {
     console.log('💼 [Circle] Getting wallet for user:', userId, 'role:', role);
 
-    // TODO: Replace this with actual database lookup of user's connected wallet
-    // For now, we still use configured wallets for development
-    // In production, this should query the users table for circle_wallet_id
+    // TODO: Query database for user's connected wallet
+    // const { data: user } = await supabase
+    //   .from('users')
+    //   .select('circle_wallet_id')
+    //   .eq('id', userId)
+    //   .single();
+    // 
+    // if (!user?.circle_wallet_id) {
+    //   return {
+    //     walletId: '',
+    //     address: '',
+    //     error: 'No wallet connected. Please connect your Circle wallet first.'
+    //   };
+    // }
     
-    // TEMPORARY: Using configured wallets for development only
-    // This will be replaced with user's own wallet from database
-    const walletId = role === 'manager' 
-      ? process.env.DEPLOYER_WALLET_ID || ''
-      : process.env.TENANT_WALLET_ID || '';
-
-    if (!walletId) {
-      return {
-        walletId: '',
-        address: '',
-        error: `No wallet configured for role: ${role}. User must connect their wallet first.`
-      };
-    }
-
-    // Get the actual wallet data from Circle API to retrieve real address
-    const walletResponse = await circleClient.getWallet({ id: walletId });
+    // NO MORE DEFAULT WALLETS - Users must connect their own
+    // Returning error to force wallet connection
+    console.warn('⚠️ [NO DEFAULT WALLETS] User must connect their own wallet');
     
-    if (!walletResponse.data?.wallet) {
-      return {
-        walletId: '',
-        address: '',
-        error: 'Wallet not found in Circle. Please connect a valid wallet.'
-      };
-    }
-
-    const wallet = walletResponse.data.wallet;
-    const realAddress = wallet.address; // This is the REAL Solana address
-
-    console.log('✅ [Circle] Wallet retrieved:', {
-      walletId,
-      address: realAddress,
-      blockchain: wallet.blockchain,
-      state: wallet.state
-    });
-
-    console.warn('⚠️ [DEVELOPMENT MODE] Using configured wallet. In production, users should connect their own wallets.');
-
     return {
-      walletId,
-      address: realAddress
+      walletId: '',
+      address: '',
+      error: `No wallet connected for user ${userId}. Please connect your Circle or Phantom wallet to continue.`
     };
 
   } catch (error) {
@@ -196,14 +176,13 @@ export async function getOrCreateUserWallet(userId: string, role: 'manager' | 't
  * Get Circle wallet for a user
  * Returns the user's connected wallet ID from database
  * Does NOT auto-assign - user must connect their wallet first
+ * NO DEFAULT WALLETS
  */
 export function getUserCircleWallet(userId: string, role: 'manager' | 'tenant'): string {
-  // For testing purposes, use the configured wallets
-  if (role === 'manager') {
-    return process.env.DEPLOYER_WALLET_ID || '';
-  } else {
-    return process.env.TENANT_WALLET_ID || '';
-  }
+  // NO MORE DEFAULT WALLETS
+  // Users must connect their own wallets through the UI
+  console.warn('⚠️ [NO DEFAULT WALLETS] User must connect wallet through UI');
+  return '';
 }
 
 export default {
