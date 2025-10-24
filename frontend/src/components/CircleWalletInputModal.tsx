@@ -4,7 +4,6 @@ interface CircleWalletInputModalProps {
   isOpen: boolean;
   onClose: () => void;
   onSubmit: (walletId: string) => void;
-  role: 'manager' | 'tenant';
 }
 
 /**

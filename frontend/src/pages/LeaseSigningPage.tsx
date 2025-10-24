@@ -3,6 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import LeaseDocument from '../components/LeaseDocument';
 import PaymentSection from '../components/PaymentSection';
+import CircleWalletInputModal from '../components/CircleWalletInputModal';
 import { CheckCircle, AlertCircle, Loader, Wallet, FileSignature } from 'lucide-react';
 import axios from 'axios';
 import dualWalletService, { WalletType } from '../services/dualWalletService';
@@ -42,6 +43,7 @@ const LeaseSigningPage: React.FC = () => {
   const [phantomAddress, setPhantomAddress] = useState<string>('');
   const [circleWalletId, setCircleWalletId] = useState<string>('');
   const [circleWalletConnected, setCircleWalletConnected] = useState(false);
+  const [showCircleWalletModal, setShowCircleWalletModal] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
   const [showPayments, setShowPayments] = useState(false);
@@ -97,18 +99,28 @@ const LeaseSigningPage: React.FC = () => {
     }
   };
 
-  const connectCircleWallet = async () => {
+  const connectCircleWallet = async (providedWalletId?: string) => {
     if (!userProfile?.id) return;
 
     try {
       console.log('🔗 [Circle] Connecting Circle wallet for tenant...');
-      const result = await dualWalletService.connectCircleWallet(userProfile.id, 'tenant');
+      const result = await dualWalletService.connectCircleWallet(
+        userProfile.id, 
+        'tenant',
+        providedWalletId
+      );
       
       if (result.success && result.walletId) {
         setCircleWalletId(result.walletId);
         setCircleWalletConnected(true);
         setWalletType('circle');
+        setShowCircleWalletModal(false);
+        setSuccess('Circle wallet connected successfully!');
+        setTimeout(() => setSuccess(''), 3000);
         console.log('✅ [Circle] Wallet connected:', result.walletId);
+      } else if (result.error === 'REQUIRES_WALLET_ID') {
+        // Show modal for user to input wallet ID
+        setShowCircleWalletModal(true);
       } else {
         setError(result.error || 'Failed to connect Circle wallet');
       }
@@ -116,6 +128,10 @@ const LeaseSigningPage: React.FC = () => {
       console.error('Error connecting Circle wallet:', err);
       setError('Failed to connect Circle wallet');
     }
+  };
+
+  const handleCircleWalletSubmit = async (walletId: string) => {
+    await connectCircleWallet(walletId);
   };
 
   const signLease = async () => {
@@ -322,7 +338,7 @@ const LeaseSigningPage: React.FC = () => {
                         <span>Phantom Wallet</span>
                       </button>
                       <button
-                        onClick={connectCircleWallet}
+                        onClick={() => connectCircleWallet()}
                         className="flex items-center space-x-2 px-6 py-3 bg-white text-blue-600 rounded-lg hover:bg-gray-100 transition-all font-bold shadow-lg hover:shadow-xl"
                       >
                         <Wallet className="w-5 h-5" />
@@ -445,6 +461,13 @@ const LeaseSigningPage: React.FC = () => {
         {/* Lease Document */}
         <LeaseDocument lease={lease} />
       </div>
+
+      {/* Circle Wallet Input Modal */}
+      <CircleWalletInputModal
+        isOpen={showCircleWalletModal}
+        onClose={() => setShowCircleWalletModal(false)}
+        onSubmit={handleCircleWalletSubmit}
+      />
     </div>
   );
 };
