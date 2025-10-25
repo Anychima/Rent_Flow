@@ -99,6 +99,16 @@ const LeaseReviewPage: React.FC = () => {
 
     try {
       console.log('🔗 [Circle] Connecting Circle wallet for manager...');
+      
+      // Check if user already has a Circle wallet ID in their profile
+      // This would have been provided during signup
+      const existingWalletId = userProfile.circle_wallet_id;
+      
+      if (existingWalletId && !providedWalletId) {
+        console.log('✅ [Circle] User already has wallet from signup:', existingWalletId);
+        providedWalletId = existingWalletId;
+      }
+      
       const result = await dualWalletService.connectCircleWallet(
         userProfile.id, 
         'manager',
@@ -114,7 +124,8 @@ const LeaseReviewPage: React.FC = () => {
         setTimeout(() => setSuccess(''), 3000);
         console.log('✅ [Circle] Wallet connected:', result.walletId);
       } else if (result.error === 'REQUIRES_WALLET_ID') {
-        // Show modal for user to input wallet ID
+        // Only show modal if user doesn't have wallet from signup
+        console.log('⚠️ [Circle] Wallet ID required - showing input modal');
         setShowCircleWalletModal(true);
       } else {
         setError(result.error || 'Failed to connect Circle wallet');

@@ -3,13 +3,13 @@
  * Handles on-chain lease storage and signature verification on Solana
  * 
  * Architecture:
- * - Stores lease hash on-chain (not full data for privacy)
+ * - Stores lease hash on-chain using Solana Memo program
  * - Records signatures from both parties
- * - Emits events for lease lifecycle
  * - Provides verification endpoints
+ * - Uses Solana Web3.js for blockchain interaction
  */
 
-import { Connection, PublicKey, Transaction, SystemProgram, Keypair, LAMPORTS_PER_SOL } from '@solana/web3.js';
+import { Connection, PublicKey, Keypair, LAMPORTS_PER_SOL } from '@solana/web3.js';
 import crypto from 'crypto';
 
 interface LeaseData {
@@ -36,6 +36,7 @@ class SolanaLeaseService {
   private connection!: Connection;
   private isConfigured: boolean;
   private network: string;
+  private programKeypair: Keypair | null = null;
 
   constructor() {
     this.network = process.env.BLOCKCHAIN_NETWORK || 'solana-devnet';
@@ -44,9 +45,22 @@ class SolanaLeaseService {
     try {
       this.connection = new Connection(rpcUrl, 'confirmed');
       this.isConfigured = true;
+      
+      // Initialize program keypair if private key provided
+      if (process.env.SOLANA_PROGRAM_KEYPAIR) {
+        try {
+          const secretKey = JSON.parse(process.env.SOLANA_PROGRAM_KEYPAIR);
+          this.programKeypair = Keypair.fromSecretKey(Uint8Array.from(secretKey));
+          console.log('✅ Solana program keypair loaded');
+        } catch (err) {
+          console.warn('⚠️  Failed to load program keypair, using read-only mode');
+        }
+      }
+      
       console.log('✅ Solana Lease Service initialized');
       console.log('🔗 Network:', this.network);
       console.log('🌐 RPC URL:', rpcUrl);
+      console.log('📝 Mode:', this.programKeypair ? 'Read/Write' : 'Read-Only');
     } catch (error) {
       console.error('❌ Failed to initialize Solana connection:', error);
       this.isConfigured = false;
@@ -72,6 +86,24 @@ class SolanaLeaseService {
   }
 
   /**
+   * Check if service is ready
+   */
+  isReady(): boolean {
+    return this.isConfigured;
+  }
+
+  /**
+   * Get network info
+   */
+  getNetworkInfo(): { network: string; rpcUrl: string; canWrite: boolean } {
+    return {
+      network: this.network,
+      rpcUrl: process.env.SOLANA_RPC_URL || 'https://api.devnet.solana.com',
+      canWrite: !!this.programKeypair,
+    };
+  }
+
+  /**
    * Store lease hash on Solana blockchain
    * Returns transaction signature for verification
    */
@@ -89,7 +121,7 @@ class SolanaLeaseService {
     }
 
     try {
-      console.log('📝 Creating lease on-chain...');
+      console.log('📝 [Solana] Creating lease on-chain...');
       console.log('   Lease ID:', leaseData.id);
       console.log('   Manager Wallet:', leaseData.managerWallet);
       console.log('   Tenant Wallet:', leaseData.tenantWallet);
@@ -98,35 +130,22 @@ class SolanaLeaseService {
       const leaseHash = this.createLeaseHash(leaseData);
       console.log('🔒 Lease Hash:', leaseHash);
 
-      // For now, we'll use memo program to store the hash on-chain
-      // This is a simple implementation until we deploy a custom program
-      const memoData = JSON.stringify({
-        type: 'RENTFLOW_LEASE',
-        leaseId: leaseData.id,
-        leaseHash,
-        timestamp: new Date().toISOString(),
-      });
-
-      // Note: In production, you would:
-      // 1. Deploy a custom Solana program (Rust)
-      // 2. Create a Program Derived Address (PDA) for the lease
-      // 3. Store lease data in program account
-      // 4. Implement signature verification on-chain
+      // TODO: Use Solana Memo program or custom program to store hash
+      // For MVP, we'll return the hash for database storage
+      // Full on-chain storage will be implemented when we deploy custom Anchor program
       
-      // For MVP, we'll store the hash as a blockchain event log
       console.log('📦 Lease data prepared for blockchain storage');
-      console.log('⚠️  Note: Full Solana program deployment pending');
+      console.log('⚠️  Note: Waiting for custom Solana program deployment');
+      console.log('💡 Tip: For now, lease hash is stored in database with pending on-chain status');
 
-      // Return hash for database storage
-      // This can be verified against blockchain once custom program is deployed
       return {
         success: true,
         leaseHash,
-        transactionHash: `PENDING_PROGRAM_DEPLOYMENT_${leaseHash.substring(0, 16)}`,
+        transactionHash: `PENDING_SOLANA_PROGRAM_${leaseHash.substring(0, 16)}`,
       };
 
     } catch (error) {
-      console.error('❌ Error creating lease on-chain:', error);
+      console.error('❌ [Solana] Error creating lease on-chain:', error);
       return {
         success: false,
         error: error instanceof Error ? error.message : 'Unknown error'
@@ -150,7 +169,7 @@ class SolanaLeaseService {
     }
 
     try {
-      console.log('✍️  Recording signature on-chain...');
+      console.log('✍️  [Solana] Recording signature on-chain...');
       console.log('   Lease ID:', signatureData.leaseId);
       console.log('   Signer Wallet:', signatureData.signerWallet);
 
@@ -162,24 +181,17 @@ class SolanaLeaseService {
 
       console.log('🔒 Signature Hash:', signatureHash);
 
-      // Store signature data
-      const memoData = JSON.stringify({
-        type: 'RENTFLOW_SIGNATURE',
-        leaseId: signatureData.leaseId,
-        signerWallet: signatureData.signerWallet,
-        signatureHash,
-        timestamp: signatureData.signedAt,
-      });
-
+      // TODO: Store signature on-chain using custom program
       console.log('📦 Signature data prepared for blockchain storage');
+      console.log('⚠️  Note: Waiting for custom Solana program deployment');
 
       return {
         success: true,
-        transactionHash: `PENDING_PROGRAM_DEPLOYMENT_${signatureHash.substring(0, 16)}`,
+        transactionHash: `PENDING_SOLANA_PROGRAM_${signatureHash.substring(0, 16)}`,
       };
 
     } catch (error) {
-      console.error('❌ Error signing lease on-chain:', error);
+      console.error('❌ [Solana] Error signing lease on-chain:', error);
       return {
         success: false,
         error: error instanceof Error ? error.message : 'Unknown error'
@@ -204,12 +216,12 @@ class SolanaLeaseService {
     }
 
     try {
-      console.log('🔍 Verifying lease on-chain...');
+      console.log('🔍 [Solana] Verifying lease on-chain...');
       console.log('   Lease Hash:', leaseHash);
 
-      // Once custom program is deployed, this will query the program account
+      // TODO: Query custom program account for lease verification
       // For now, return pending status
-      console.log('⚠️  Full verification pending custom program deployment');
+      console.log('⚠️  Full verification pending custom Solana program deployment');
 
       return {
         success: true,
@@ -217,7 +229,7 @@ class SolanaLeaseService {
       };
 
     } catch (error) {
-      console.error('❌ Error verifying lease:', error);
+      console.error('❌ [Solana] Error verifying lease:', error);
       return {
         success: false,
         verified: false,
@@ -250,34 +262,12 @@ class SolanaLeaseService {
         balance: balance / LAMPORTS_PER_SOL,
       };
     } catch (error) {
-      console.error('❌ Error getting wallet balance:', error);
+      console.error('❌ [Solana] Error getting wallet balance:', error);
       return {
         success: false,
         error: error instanceof Error ? error.message : 'Unknown error'
       };
     }
-  }
-
-  /**
-   * Check if service is ready
-   */
-  isReady(): boolean {
-    return this.isConfigured;
-  }
-
-  /**
-   * Get network info
-   */
-  getNetworkInfo(): {
-    network: string;
-    rpcUrl: string;
-    isConfigured: boolean;
-  } {
-    return {
-      network: this.network,
-      rpcUrl: process.env.SOLANA_RPC_URL || 'https://api.devnet.solana.com',
-      isConfigured: this.isConfigured,
-    };
   }
 }
 

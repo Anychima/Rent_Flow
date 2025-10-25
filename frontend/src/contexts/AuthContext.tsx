@@ -14,6 +14,7 @@ interface UserProfile {
   user_type: string;
   is_active: boolean;
   wallet_address?: string;
+  circle_wallet_id?: string; // Circle wallet ID from signup
   phone?: string;
 }
 
@@ -292,17 +293,45 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const signOut = async () => {
     try {
       console.log('🚪 [AuthContext] Signing out...');
+      
+      // Sign out from Supabase
       await supabase.auth.signOut();
+      
+      // Clear all state
       setUser(null);
       setUserProfile(null);
       setSession(null);
+      
+      // Clear any cached data in localStorage
+      try {
+        localStorage.removeItem('supabase.auth.token');
+        console.log('🧹 [AuthContext] Cleared cached auth data');
+      } catch (err) {
+        console.warn('⚠️ [AuthContext] Could not clear localStorage:', err);
+      }
+      
       console.log('✅ [AuthContext] Sign out complete');
+      
+      // Force redirect to login page after signout
+      console.log('🔄 [AuthContext] Redirecting to login page...');
+      window.location.href = '/login';
     } catch (error) {
       console.error('❌ [AuthContext] Error during sign out:', error);
+      
       // Force clear state even if API call fails
       setUser(null);
       setUserProfile(null);
       setSession(null);
+      
+      // Try to clear localStorage anyway
+      try {
+        localStorage.removeItem('supabase.auth.token');
+      } catch (err) {
+        console.warn('⚠️ [AuthContext] Could not clear localStorage on error:', err);
+      }
+      
+      // Still redirect on error
+      window.location.href = '/login';
     }
   };
 
