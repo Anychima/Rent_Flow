@@ -51,7 +51,7 @@ class Logger {
   /**
    * Format log message
    */
-  private formatMessage(level: string, message: string, data?: any, context?: string): string {
+  private formatMessage(level: string, message: string, context?: string): string {
     const timestamp = this.getTimestamp();
     const contextStr = context ? `[${context}]` : '';
     return `[${timestamp}] ${level} ${contextStr} ${message}`;
@@ -63,7 +63,7 @@ class Logger {
   debug(message: string, data?: any, context?: string): void {
     if (this.currentLevel <= LogLevel.DEBUG) {
       const emoji = this.getLevelEmoji('DEBUG');
-      console.log(`${emoji} ${this.formatMessage('DEBUG', message, data, context)}`, data || '');
+      console.log(`${emoji} ${this.formatMessage('DEBUG', message, context)}`, data || '');
     }
   }
 
@@ -73,7 +73,7 @@ class Logger {
   info(message: string, data?: any, context?: string): void {
     if (this.currentLevel <= LogLevel.INFO) {
       const emoji = this.getLevelEmoji('INFO');
-      console.log(`${emoji} ${this.formatMessage('INFO', message, data, context)}`, data || '');
+      console.log(`${emoji} ${this.formatMessage('INFO', message, context)}`, data || '');
     }
   }
 
@@ -83,7 +83,7 @@ class Logger {
   success(message: string, data?: any, context?: string): void {
     if (this.currentLevel <= LogLevel.INFO) {
       const emoji = this.getLevelEmoji('SUCCESS');
-      console.log(`${emoji} ${this.formatMessage('SUCCESS', message, data, context)}`, data || '');
+      console.log(`${emoji} ${this.formatMessage('SUCCESS', message, context)}`, data || '');
     }
   }
 
@@ -93,7 +93,7 @@ class Logger {
   warn(message: string, data?: any, context?: string): void {
     if (this.currentLevel <= LogLevel.WARN) {
       const emoji = this.getLevelEmoji('WARN');
-      console.warn(`${emoji} ${this.formatMessage('WARN', message, data, context)}`, data || '');
+      console.warn(`${emoji} ${this.formatMessage('WARN', message, context)}`, data || '');
     }
   }
 
@@ -106,7 +106,7 @@ class Logger {
       const errorData = error instanceof Error 
         ? { message: error.message, stack: error.stack }
         : error;
-      console.error(`${emoji} ${this.formatMessage('ERROR', message, errorData, context)}`, errorData || '');
+      console.error(`${emoji} ${this.formatMessage('ERROR', message, context)}`, errorData || '');
     }
   }
 
