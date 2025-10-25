@@ -209,51 +209,48 @@ app.get('/api/circle/wallet/:userId',
 );
 
 // Sign message with Circle wallet
-app.post('/api/circle/sign-message', async (req: Request, res: Response) => {
-  try {
+app.post('/api/circle/sign-message',
+  validateBody({
+    walletId: { type: 'string', required: true, min: 1 },
+    message: { type: 'string', required: true, min: 1 }
+  }),
+  asyncHandler(async (req: Request, res: Response) => {
     const { walletId, message } = req.body;
 
-    if (!walletId || !message) {
-      return res.status(400).json({
-        success: false,
-        error: 'Wallet ID and message are required'
-      });
-    }
+    logger.info('Signing message with Circle wallet', { walletId }, 'CIRCLE_API');
 
     const result = await circleSigningService.signMessageWithCircleWallet(walletId, message);
 
+    if (!result.success) {
+      throw ApiErrors.badRequest(result.error || 'Failed to sign message');
+    }
+
     res.json(result);
-  } catch (error) {
-    logger.error('Error signing message', error, 'CIRCLE_API');
-    res.status(500).json({
-      success: false,
-      error: error instanceof Error ? error.message : 'Unknown error'
-    });
-  }
-});
+  })
+);
 
 // Save Phantom wallet address to database
-app.post('/api/wallet/phantom/connect', async (req: Request, res: Response) => {
-  try {
+app.post('/api/wallet/phantom/connect',
+  validateBody({
+    userId: { type: 'uuid', required: true },
+    address: { type: 'string', required: true, min: 32, max: 64 },
+    role: { type: 'string', required: false, enum: ['manager', 'tenant'] }
+  }),
+  asyncHandler(async (req: Request, res: Response) => {
     const { userId, address, role } = req.body;
-
-    if (!userId || !address) {
-      return res.status(400).json({
-        success: false,
-        error: 'User ID and wallet address are required'
-      });
-    }
 
     logger.info(`Connecting Phantom wallet for user: ${userId}`, { address }, 'PHANTOM');
 
     // Save to database
-    await supabase
+    const { error } = await supabase
       .from('users')
       .update({
         phantom_wallet_address: address,
         wallet_address: address // Also update main wallet field
       })
       .eq('id', userId);
+
+    if (error) throw ApiErrors.internal('Failed to save wallet address');
 
     logger.success('Phantom wallet connected', { address }, 'PHANTOM');
 
@@ -265,14 +262,8 @@ app.post('/api/wallet/phantom/connect', async (req: Request, res: Response) => {
         role
       }
     });
-  } catch (error) {
-    logger.error('Error connecting Phantom wallet', error, 'PHANTOM');
-    res.status(500).json({
-      success: false,
-      error: error instanceof Error ? error.message : 'Unknown error'
-    });
-  }
-});
+  })
+);
 
 // Get all properties (for managers - only their own)
 app.get('/api/properties', async (req: Request, res: Response) => {
@@ -418,26 +409,29 @@ app.post('/api/properties/:id/view', async (req: Request, res: Response) => {
 });
 
 // Get property by ID
-app.get('/api/properties/:id', async (req: Request, res: Response) => {
-  try {
+app.get('/api/properties/:id',
+  validateParams({
+    id: { type: 'uuid', required: true }
+  }),
+  asyncHandler(async (req: Request, res: Response) => {
     const { id } = req.params;
+    
     const { data, error } = await supabase
       .from('properties')
       .select('*')
       .eq('id', id)
       .single();
 
-    if (error) throw error;
+    if (error) {
+      if (error.code === 'PGRST116') {
+        throw ApiErrors.notFound('Property not found');
+      }
+      throw ApiErrors.internal('Failed to fetch property');
+    }
 
     res.json({ success: true, data });
-  } catch (error) {
-    console.error('Error fetching property:', error);
-    res.status(500).json({ 
-      success: false, 
-      error: error instanceof Error ? error.message : 'Unknown error' 
-    });
-  }
-});
+  })
+);
 
 // Create new property
 app.post('/api/properties',
@@ -468,8 +462,20 @@ app.post('/api/properties',
 );
 
 // Update property
-app.put('/api/properties/:id', async (req: Request, res: Response) => {
-  try {
+app.put('/api/properties/:id',
+  validateParams({
+    id: { type: 'uuid', required: true }
+  }),
+  validateBody({
+    title: { type: 'string', required: false, min: 3, max: 200 },
+    address: { type: 'string', required: false, min: 5, max: 500 },
+    monthly_rent_usdc: { type: 'number', required: false, min: 0 },
+    security_deposit_usdc: { type: 'number', required: false, min: 0 },
+    bedrooms: { type: 'number', required: false, min: 0 },
+    bathrooms: { type: 'number', required: false, min: 0 },
+    square_feet: { type: 'number', required: false, min: 0 }
+  }),
+  asyncHandler(async (req: Request, res: Response) => {
     const { id } = req.params;
     const updates = req.body;
 
@@ -480,39 +486,48 @@ app.put('/api/properties/:id', async (req: Request, res: Response) => {
       .select()
       .single();
 
-    if (error) throw error;
+    if (error) {
+      if (error.code === 'PGRST116') {
+        throw ApiErrors.notFound('Property not found');
+      }
+      throw ApiErrors.internal('Failed to update property');
+    }
 
     res.json({ success: true, data });
-  } catch (error) {
-    console.error('Error updating property:', error);
-    res.status(500).json({ 
-      success: false, 
-      error: error instanceof Error ? error.message : 'Unknown error' 
-    });
-  }
-});
+  })
+);
 
 // Delete property
-app.delete('/api/properties/:id', async (req: Request, res: Response) => {
-  try {
+app.delete('/api/properties/:id',
+  validateParams({
+    id: { type: 'uuid', required: true }
+  }),
+  asyncHandler(async (req: Request, res: Response) => {
     const { id } = req.params;
+
+    // Check if property has active leases
+    const { data: activeLeases } = await supabase
+      .from('leases')
+      .select('id')
+      .eq('property_id', id)
+      .in('status', ['active', 'pending_tenant', 'pending_landlord', 'fully_signed'])
+      .limit(1);
+
+    if (activeLeases && activeLeases.length > 0) {
+      throw ApiErrors.conflict('Cannot delete property with active leases');
+    }
 
     const { error } = await supabase
       .from('properties')
       .delete()
       .eq('id', id);
 
-    if (error) throw error;
+    if (error) throw ApiErrors.internal('Failed to delete property');
 
+    logger.info('Property deleted', { propertyId: id }, 'PROPERTIES');
     res.json({ success: true, message: 'Property deleted successfully' });
-  } catch (error) {
-    console.error('Error deleting property:', error);
-    res.status(500).json({ 
-      success: false, 
-      error: error instanceof Error ? error.message : 'Unknown error' 
-    });
-  }
-});
+  })
+);
 
 // Get all leases
 app.get('/api/leases', async (req: Request, res: Response) => {
@@ -602,19 +617,24 @@ app.get('/api/leases/by-application/:applicationId', async (req: Request, res: R
 });
 
 // Create new lease
-app.post('/api/leases', async (req: Request, res: Response) => {
-  try {
+app.post('/api/leases',
+  validateBody({
+    property_id: { type: 'uuid', required: true },
+    tenant_id: { type: 'uuid', required: true },
+    start_date: { type: 'string', required: true, pattern: /^\d{4}-\d{2}-\d{2}$/ },
+    end_date: { type: 'string', required: true, pattern: /^\d{4}-\d{2}-\d{2}$/ },
+    monthly_rent_usdc: { type: 'number', required: true, min: 0 },
+    security_deposit_usdc: { type: 'number', required: false, min: 0 },
+    rent_due_day: { type: 'number', required: false, min: 1, max: 31 }
+  }),
+  asyncHandler(async (req: Request, res: Response) => {
     const leaseData = req.body;
     
-    // Validate required fields
-    const required = ['property_id', 'tenant_id', 'start_date', 'end_date', 'monthly_rent_usdc'];
-    const missing = required.filter(field => !leaseData[field]);
-    
-    if (missing.length > 0) {
-      return res.status(400).json({
-        success: false,
-        error: `Missing required fields: ${missing.join(', ')}`
-      });
+    // Validate date range
+    const startDate = new Date(leaseData.start_date);
+    const endDate = new Date(leaseData.end_date);
+    if (endDate <= startDate) {
+      throw ApiErrors.unprocessable('End date must be after start date');
     }
 
     // Check if property is available
@@ -626,10 +646,7 @@ app.post('/api/leases', async (req: Request, res: Response) => {
       .single();
 
     if (existingLease) {
-      return res.status(400).json({
-        success: false,
-        error: 'Property already has an active lease'
-      });
+      throw ApiErrors.conflict('Property already has an active lease');
     }
 
     const { data, error } = await supabase
@@ -642,11 +659,11 @@ app.post('/api/leases', async (req: Request, res: Response) => {
       `)
       .single();
 
-    if (error) throw error;
+    if (error) throw ApiErrors.internal('Failed to create lease');
 
     // Store lease hash on blockchain if wallet addresses available
     if (data.manager_wallet_address && data.tenant_wallet_address) {
-      console.log('🔗 [Blockchain] Storing lease on-chain...');
+      logger.info('Storing lease on-chain', { leaseId: data.id }, 'BLOCKCHAIN');
       const blockchainResult = await solanaLeaseService.createLeaseOnChain({
         id: data.id,
         propertyId: data.property_id,
@@ -661,7 +678,6 @@ app.post('/api/leases', async (req: Request, res: Response) => {
       });
 
       if (blockchainResult.success) {
-        // Update lease with blockchain info
         await supabase
           .from('leases')
           .update({
@@ -671,25 +687,27 @@ app.post('/api/leases', async (req: Request, res: Response) => {
           })
           .eq('id', data.id);
         
-        console.log('✅ [Blockchain] Lease stored on-chain:', blockchainResult.transactionHash);
+        logger.success('Lease stored on-chain', { txHash: blockchainResult.transactionHash }, 'BLOCKCHAIN');
       } else {
-        console.warn('⚠️ [Blockchain] Failed to store lease on-chain:', blockchainResult.error);
+        logger.warn('Failed to store lease on-chain', { error: blockchainResult.error }, 'BLOCKCHAIN');
       }
     }
 
     res.status(201).json({ success: true, data });
-  } catch (error) {
-    console.error('Error creating lease:', error);
-    res.status(500).json({ 
-      success: false, 
-      error: error instanceof Error ? error.message : 'Unknown error' 
-    });
-  }
-});
+  })
+);
 
 // Update lease
-app.put('/api/leases/:id', async (req: Request, res: Response) => {
-  try {
+app.put('/api/leases/:id',
+  validateParams({
+    id: { type: 'uuid', required: true }
+  }),
+  validateBody({
+    status: { type: 'string', required: false, enum: ['pending_tenant', 'pending_landlord', 'fully_signed', 'active', 'terminated', 'expired'] },
+    monthly_rent_usdc: { type: 'number', required: false, min: 0 },
+    security_deposit_usdc: { type: 'number', required: false, min: 0 }
+  }),
+  asyncHandler(async (req: Request, res: Response) => {
     const { id } = req.params;
     const updates = req.body;
 
@@ -704,17 +722,16 @@ app.put('/api/leases/:id', async (req: Request, res: Response) => {
       `)
       .single();
 
-    if (error) throw error;
+    if (error) {
+      if (error.code === 'PGRST116') {
+        throw ApiErrors.notFound('Lease not found');
+      }
+      throw ApiErrors.internal('Failed to update lease');
+    }
 
     res.json({ success: true, data });
-  } catch (error) {
-    console.error('Error updating lease:', error);
-    res.status(500).json({ 
-      success: false, 
-      error: error instanceof Error ? error.message : 'Unknown error' 
-    });
-  }
-});
+  })
+);
 
 // Terminate lease
 app.post('/api/leases/:id/terminate', async (req: Request, res: Response) => {
@@ -840,20 +857,17 @@ app.get('/api/maintenance/:id', async (req: Request, res: Response) => {
 });
 
 // Create maintenance request
-app.post('/api/maintenance', async (req: Request, res: Response) => {
-  try {
+app.post('/api/maintenance',
+  validateBody({
+    property_id: { type: 'uuid', required: true },
+    requested_by: { type: 'uuid', required: true },
+    title: { type: 'string', required: true, min: 3, max: 200 },
+    category: { type: 'string', required: true, enum: ['plumbing', 'electrical', 'hvac', 'appliance', 'structural', 'pest_control', 'other'] },
+    description: { type: 'string', required: false, max: 2000 },
+    priority: { type: 'string', required: false, enum: ['low', 'medium', 'high', 'emergency'] }
+  }),
+  asyncHandler(async (req: Request, res: Response) => {
     const maintenanceData = req.body;
-    
-    // Validate required fields
-    const required = ['property_id', 'requested_by', 'title', 'category']; // Changed requestor_id to requested_by
-    const missing = required.filter(field => !maintenanceData[field]);
-    
-    if (missing.length > 0) {
-      return res.status(400).json({
-        success: false,
-        error: `Missing required fields: ${missing.join(', ')}`
-      });
-    }
 
     // Set defaults
     const request = {
@@ -870,21 +884,15 @@ app.post('/api/maintenance', async (req: Request, res: Response) => {
       .select(`
         *,
         property:properties(*),
-        requestor:users!maintenance_requests_requested_by_fkey(*) // Fixed the foreign key reference
+        requestor:users!maintenance_requests_requested_by_fkey(*)
       `)
       .single();
 
-    if (error) throw error;
+    if (error) throw ApiErrors.internal('Failed to create maintenance request');
 
     res.status(201).json({ success: true, data });
-  } catch (error) {
-    console.error('Error creating maintenance request:', error);
-    res.status(500).json({ 
-      success: false, 
-      error: error instanceof Error ? error.message : 'Unknown error' 
-    });
-  }
-});
+  })
+);
 
 // Update maintenance request
 app.put('/api/maintenance/:id', async (req: Request, res: Response) => {
@@ -1261,43 +1269,18 @@ app.get('/api/leases/:leaseId/payments', async (req: Request, res: Response) => 
 });
 
 // Create payment (initiate)
-app.post('/api/payments', async (req: Request, res: Response) => {
-  try {
+app.post('/api/payments',
+  validateBody({
+    lease_id: { type: 'uuid', required: true },
+    tenant_id: { type: 'uuid', required: true },
+    amount_usdc: { type: 'number', required: true, min: 0 },
+    due_date: { type: 'string', required: true, pattern: /^\d{4}-\d{2}-\d{2}$/ },
+    payment_type: { type: 'string', required: false, enum: ['rent', 'security_deposit', 'late_fee', 'other'] }
+  }),
+  asyncHandler(async (req: Request, res: Response) => {
     const paymentData = req.body;
     
-    console.log('💳 Payment creation request:', paymentData);
-    
-    // Validate required fields
-    const required = ['lease_id', 'tenant_id', 'amount_usdc', 'due_date'];
-    const missing = required.filter(field => !paymentData[field]);
-    
-    if (missing.length > 0) {
-      console.log('❌ Missing required fields:', missing);
-      return res.status(400).json({
-        success: false,
-        error: `Missing required fields: ${missing.join(', ')}`
-      });
-    }
-
-    // Validate amount
-    const amount = parseFloat(paymentData.amount_usdc);
-    if (isNaN(amount) || amount <= 0) {
-      console.log('❌ Invalid amount:', paymentData.amount_usdc);
-      return res.status(400).json({
-        success: false,
-        error: 'Invalid payment amount. Must be a positive number greater than 0.'
-      });
-    }
-
-    // Validate due date format
-    const dueDate = new Date(paymentData.due_date);
-    if (isNaN(dueDate.getTime())) {
-      console.log('❌ Invalid due date:', paymentData.due_date);
-      return res.status(400).json({
-        success: false,
-        error: 'Invalid due date format. Use YYYY-MM-DD.'
-      });
-    }
+    logger.info('Payment creation request', { paymentData }, 'PAYMENTS');
 
     // Verify lease exists
     const { data: lease, error: leaseError } = await supabase
@@ -1307,11 +1290,7 @@ app.post('/api/payments', async (req: Request, res: Response) => {
       .single();
 
     if (leaseError || !lease) {
-      console.log('❌ Lease not found:', paymentData.lease_id);
-      return res.status(404).json({
-        success: false,
-        error: 'Lease not found'
-      });
+      throw ApiErrors.notFound('Lease not found');
     }
 
     // Verify tenant exists
@@ -1322,17 +1301,13 @@ app.post('/api/payments', async (req: Request, res: Response) => {
       .single();
 
     if (tenantError || !tenant) {
-      console.log('❌ Tenant not found:', paymentData.tenant_id);
-      return res.status(404).json({
-        success: false,
-        error: 'Tenant not found'
-      });
+      throw ApiErrors.notFound('Tenant not found');
     }
 
     // Set default status and payment date
     const payment = {
       ...paymentData,
-      amount_usdc: amount, // Ensure it's a number
+      amount_usdc: paymentData.amount_usdc,
       status: paymentData.status || 'pending',
       payment_date: paymentData.payment_date || new Date().toISOString(),
       blockchain_network: 'solana',
@@ -1343,7 +1318,7 @@ app.post('/api/payments', async (req: Request, res: Response) => {
       (payment as any).payment_type = paymentData.payment_type;
     }
 
-    console.log('💳 Creating payment record:', payment);
+    logger.info('Creating payment record', { payment }, 'PAYMENTS');
 
     const { data, error } = await supabase
       .from('rent_payments')
@@ -1359,21 +1334,15 @@ app.post('/api/payments', async (req: Request, res: Response) => {
       .single();
 
     if (error) {
-      console.error('❌ Database error creating payment:', error);
-      throw error;
+      logger.error('Database error creating payment', error, 'PAYMENTS');
+      throw ApiErrors.internal('Failed to create payment');
     }
 
-    console.log('✅ Payment created successfully:', data);
+    logger.success('Payment created successfully', { paymentId: data.id }, 'PAYMENTS');
 
     res.status(201).json({ success: true, data });
-  } catch (error) {
-    console.error('❌ Error creating payment:', error);
-    res.status(500).json({ 
-      success: false, 
-      error: error instanceof Error ? error.message : 'Unknown error' 
-    });
-  }
-});
+  })
+);
 
 // Update payment status
 app.put('/api/payments/:id', async (req: Request, res: Response) => {

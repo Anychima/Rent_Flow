@@ -95,10 +95,11 @@ describe('Logger Service', () => {
     it('should log API requests', () => {
       logger.apiRequest('GET', '/api/test', 'user-123');
       
-      expect(consoleLogSpy).toHaveBeenCalledWith(
-        expect.stringContaining('API Request'),
-        expect.anything()
-      );
+      expect(consoleLogSpy).toHaveBeenCalled();
+      const logCall = consoleLogSpy.mock.calls[0][0];
+      expect(logCall).toContain('API Request');
+      expect(logCall).toContain('GET');
+      expect(logCall).toContain('/api/test');
     });
 
     it('should log API responses', () => {
@@ -110,10 +111,11 @@ describe('Logger Service', () => {
     it('should log payments', () => {
       logger.payment('process', 100, 'completed', 'tx-123');
       
-      expect(consoleLogSpy).toHaveBeenCalledWith(
-        expect.stringContaining('Payment process'),
-        expect.anything()
-      );
+      expect(consoleLogSpy).toHaveBeenCalled();
+      const logCall = consoleLogSpy.mock.calls[0][0];
+      expect(logCall).toContain('Payment');
+      expect(logCall).toContain('100');
+      expect(logCall).toContain('completed');
     });
 
     it('should log blockchain transactions', () => {

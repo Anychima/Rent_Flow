@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import MicroPaymentForm from './MicroPaymentForm';
 import MicropaymentHistory from './MicropaymentHistory';
+import { DashboardStatsSkeleton, TableSkeleton, FormSkeleton } from './SkeletonLoader';
 
 const API_URL = process.env.REACT_APP_BACKEND_URL || 'http://localhost:3001';
 
@@ -460,17 +461,23 @@ Your payment is being processed.`);
 
   if (loading && !dashboardData) {
     return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <div className="text-center">
-          <div className="inline-block animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
-          <p className="mt-4 text-gray-600">Loading your dashboard...</p>
-          <p className="mt-2 text-sm text-gray-500">Please wait a moment</p>
-          <button
-            onClick={() => window.location.reload()}
-            className="mt-4 px-4 py-2 text-sm text-blue-600 hover:text-blue-700 underline"
-          >
-            Taking too long? Click to reload
-          </button>
+      <div className="min-h-screen bg-gray-50">
+        {/* Header Skeleton */}
+        <div className="bg-white shadow-sm">
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
+            <div className="flex justify-between items-center">
+              <div className="space-y-2">
+                <div className="h-8 w-48 bg-gray-200 rounded animate-pulse"></div>
+                <div className="h-4 w-32 bg-gray-200 rounded animate-pulse"></div>
+              </div>
+              <div className="h-10 w-24 bg-gray-200 rounded animate-pulse"></div>
+            </div>
+          </div>
+        </div>
+
+        {/* Content Skeleton */}
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+          <DashboardStatsSkeleton />
         </div>
       </div>
     );
@@ -683,7 +690,23 @@ Your payment is being processed.`);
               </button>
             </div>
 
-            {dashboardData?.maintenanceRequests && dashboardData.maintenanceRequests.length > 0 ? (
+            {loading ? (
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                {[...Array(3)].map((_, i) => (
+                  <div key={i} className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+                    <div className="space-y-3">
+                      <div className="h-6 w-3/4 bg-gray-200 rounded animate-pulse"></div>
+                      <div className="h-4 w-full bg-gray-200 rounded animate-pulse"></div>
+                      <div className="h-4 w-2/3 bg-gray-200 rounded animate-pulse"></div>
+                      <div className="flex justify-between">
+                        <div className="h-4 w-20 bg-gray-200 rounded animate-pulse"></div>
+                        <div className="h-4 w-20 bg-gray-200 rounded animate-pulse"></div>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : dashboardData?.maintenanceRequests && dashboardData.maintenanceRequests.length > 0 ? (
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                 {dashboardData.maintenanceRequests.map((request) => (
                   <div key={request.id} className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
@@ -739,7 +762,9 @@ Your payment is being processed.`);
               </button>
             </div>
 
-            {dashboardData?.payments && dashboardData.payments.length > 0 ? (
+            {loading ? (
+              <TableSkeleton rows={5} columns={5} />
+            ) : dashboardData?.payments && dashboardData.payments.length > 0 ? (
               <div className="bg-white rounded-xl shadow-sm overflow-hidden">
                 <table className="min-w-full divide-y divide-gray-200">
                   <thead className="bg-gray-50">
