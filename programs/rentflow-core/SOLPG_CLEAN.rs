@@ -1,13 +1,11 @@
 use anchor_lang::prelude::*;
 
-// IMPORTANT: After first build, replace this with your actual Program ID
 declare_id!("Fg6PaFpoGXkYsidMpWTK6W2BeZ7FEfcYkg476zPFsLnS");
 
 #[program]
 pub mod rentflow_core {
     use super::*;
 
-    /// Initialize a new lease on-chain
     pub fn initialize_lease(
         ctx: Context<InitializeLease>,
         lease_id: String,
@@ -42,14 +40,10 @@ pub mod rentflow_core {
         lease.activated_at = 0;
         lease.bump = ctx.bumps.lease;
 
-        msg!("✅ Lease initialized: {}", lease.lease_id);
-        msg!("   Manager: {}", lease.manager_wallet);
-        msg!("   Tenant: {}", lease.tenant_wallet);
-        msg!("   Monthly Rent: {} USDC", monthly_rent);
+        msg!("Lease initialized: {}", lease.lease_id);
         Ok(())
     }
 
-    /// Sign the lease (manager or tenant)
     pub fn sign_lease(
         ctx: Context<SignLease>,
         signature_hash: [u8; 32],
@@ -64,27 +58,25 @@ pub mod rentflow_core {
             require!(!lease.manager_signed, LeaseError::AlreadySigned);
             lease.manager_signed = true;
             lease.manager_signature = signature_hash;
-            msg!("✅ Manager signed lease: {}", lease.lease_id);
+            msg!("Manager signed");
         } else if signer == lease.tenant_wallet {
             require!(!lease.tenant_signed, LeaseError::AlreadySigned);
             lease.tenant_signed = true;
             lease.tenant_signature = signature_hash;
-            msg!("✅ Tenant signed lease: {}", lease.lease_id);
+            msg!("Tenant signed");
         } else {
             return Err(LeaseError::UnauthorizedSigner.into());
         }
 
-        // Auto-activate if both parties have signed
         if lease.manager_signed && lease.tenant_signed {
             lease.status = LeaseStatus::Active;
             lease.activated_at = clock.unix_timestamp;
-            msg!("🎉 Lease activated! Both parties signed.");
+            msg!("Lease activated!");
         }
 
         Ok(())
     }
 
-    /// Update lease status
     pub fn update_lease_status(
         ctx: Context<UpdateLeaseStatus>,
         new_status: LeaseStatus,
@@ -100,11 +92,11 @@ pub mod rentflow_core {
 
         match (&lease.status, &new_status) {
             (LeaseStatus::Active, LeaseStatus::Terminated) => {
-                msg!("⚠️ Lease terminated: {}", lease.lease_id);
+                msg!("Lease terminated");
             },
             (LeaseStatus::Active, LeaseStatus::Completed) => {
                 require!(clock.unix_timestamp >= lease.end_date, LeaseError::LeaseNotEnded);
-                msg!("✅ Lease completed: {}", lease.lease_id);
+                msg!("Lease completed");
             },
             _ => {
                 return Err(LeaseError::InvalidStatusTransition.into());
@@ -115,16 +107,12 @@ pub mod rentflow_core {
         Ok(())
     }
 
-    /// Verify lease signatures (read-only)
     pub fn verify_lease(ctx: Context<VerifyLease>) -> Result<bool> {
         let lease = &ctx.accounts.lease;
         let is_valid = lease.manager_signed && lease.tenant_signed && lease.status == LeaseStatus::Active;
-        msg!("Lease verification: {}", is_valid);
         Ok(is_valid)
     }
 }
-
-// ============ Account Structures ============
 
 #[derive(Accounts)]
 #[instruction(lease_id: String)]
@@ -161,53 +149,49 @@ pub struct VerifyLease<'info> {
     pub lease: Account<'info, Lease>,
 }
 
-// ============ Data Structures ============
-
 #[account]
 pub struct Lease {
-    pub lease_id: String,          // Max 64 chars
-    pub lease_hash: [u8; 32],      // SHA-256 hash
-    pub manager_wallet: Pubkey,     // Landlord
-    pub tenant_wallet: Pubkey,      // Tenant
-    pub monthly_rent: u64,          // USDC (6 decimals)
-    pub security_deposit: u64,      // USDC
-    pub start_date: i64,            // Unix timestamp
-    pub end_date: i64,              // Unix timestamp
-    pub manager_signed: bool,       // Manager signature status
-    pub tenant_signed: bool,        // Tenant signature status
-    pub manager_signature: [u8; 32], // Manager's signature hash
-    pub tenant_signature: [u8; 32],  // Tenant's signature hash
-    pub status: LeaseStatus,        // Current lease status
-    pub created_at: i64,            // Creation timestamp
-    pub activated_at: i64,          // Activation timestamp
-    pub bump: u8,                   // PDA bump seed
+    pub lease_id: String,
+    pub lease_hash: [u8; 32],
+    pub manager_wallet: Pubkey,
+    pub tenant_wallet: Pubkey,
+    pub monthly_rent: u64,
+    pub security_deposit: u64,
+    pub start_date: i64,
+    pub end_date: i64,
+    pub manager_signed: bool,
+    pub tenant_signed: bool,
+    pub manager_signature: [u8; 32],
+    pub tenant_signature: [u8; 32],
+    pub status: LeaseStatus,
+    pub created_at: i64,
+    pub activated_at: i64,
+    pub bump: u8,
 }
 
 #[derive(AnchorSerialize, AnchorDeserialize, Clone, PartialEq, Eq)]
 pub enum LeaseStatus {
-    Pending,      // Awaiting signatures
-    Active,       // Both signed, lease active
-    Terminated,   // Ended early
-    Completed,    // Ended normally
+    Pending,
+    Active,
+    Terminated,
+    Completed,
 }
-
-// ============ Error Codes ============
 
 #[error_code]
 pub enum LeaseError {
-    #[msg("Lease ID cannot exceed 64 characters")]
+    #[msg("Lease ID too long")]
     LeaseIdTooLong,
-    #[msg("Rent amount must be greater than 0")]
+    #[msg("Invalid rent amount")]
     InvalidRentAmount,
-    #[msg("End date must be after start date")]
+    #[msg("Invalid date range")]
     InvalidDateRange,
-    #[msg("Unauthorized signer - must be manager or tenant")]
+    #[msg("Unauthorized signer")]
     UnauthorizedSigner,
-    #[msg("Lease is not in pending status")]
+    #[msg("Lease not pending")]
     LeaseNotPending,
-    #[msg("This party has already signed the lease")]
+    #[msg("Already signed")]
     AlreadySigned,
-    #[msg("Lease has not ended yet")]
+    #[msg("Lease not ended")]
     LeaseNotEnded,
     #[msg("Invalid status transition")]
     InvalidStatusTransition,
