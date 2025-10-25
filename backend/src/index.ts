@@ -9,6 +9,7 @@ dotenv.config({ path: path.join(__dirname, '../.env') });
 
 import { createClient } from '@supabase/supabase-js';
 import { logger } from './services/logger';
+import { validateEnvironment } from './utils/envValidator';
 import circlePaymentService from './services/circlePaymentService';
 import paymentScheduler from './services/paymentScheduler';
 import openaiService from './services/openaiService';
@@ -17,6 +18,16 @@ import voiceNotificationScheduler from './services/voiceNotificationScheduler';
 import applicationService from './services/applicationService';
 import circleSigningService from './services/circleSigningService';
 import solanaLeaseService from './services/solanaLeaseService';
+
+// Validate environment variables on startup
+const envValidation = validateEnvironment();
+if (!envValidation.isValid) {
+  logger.error('Environment validation failed. Server may not function correctly.', { errors: envValidation.errors }, 'STARTUP');
+  // Continue anyway in development, but this should be fatal in production
+  if (process.env.NODE_ENV === 'production') {
+    process.exit(1);
+  }
+}
 
 // Log environment configuration
 logger.config('Environment variables loaded', {
