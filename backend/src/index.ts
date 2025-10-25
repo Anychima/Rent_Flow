@@ -7,15 +7,8 @@ import path from 'path';
 // When running with ts-node-dev, __dirname is src/, so go up one level to find .env
 dotenv.config({ path: path.join(__dirname, '../.env') });
 
-console.log('🔍 Debug dotenv path:', path.join(__dirname, '../.env'));
-console.log('📦 Environment Variables Loaded:');
-console.log('   PORT:', process.env.PORT);
-console.log('   CIRCLE_API_KEY:', process.env.CIRCLE_API_KEY ? `${process.env.CIRCLE_API_KEY.substring(0, 20)}...` : 'NOT SET');
-console.log('   BLOCKCHAIN_NETWORK:', process.env.BLOCKCHAIN_NETWORK);
-console.log('   SUPABASE_URL:', process.env.SUPABASE_URL);
-console.log('   USDC_TOKEN_ID:', process.env.USDC_TOKEN_ID);
-
 import { createClient } from '@supabase/supabase-js';
+import { logger } from './services/logger';
 import circlePaymentService from './services/circlePaymentService';
 import paymentScheduler from './services/paymentScheduler';
 import openaiService from './services/openaiService';
@@ -24,6 +17,15 @@ import voiceNotificationScheduler from './services/voiceNotificationScheduler';
 import applicationService from './services/applicationService';
 import circleSigningService from './services/circleSigningService';
 import solanaLeaseService from './services/solanaLeaseService';
+
+// Log environment configuration
+logger.config('Environment variables loaded', {
+  port: process.env.PORT,
+  circleApiKey: process.env.CIRCLE_API_KEY ? `${process.env.CIRCLE_API_KEY.substring(0, 20)}...` : 'NOT SET',
+  blockchainNetwork: process.env.BLOCKCHAIN_NETWORK,
+  supabaseUrl: process.env.SUPABASE_URL,
+  usdcTokenId: process.env.USDC_TOKEN_ID
+});
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -74,7 +76,7 @@ app.get('/api/blockchain/info', (_req: Request, res: Response) => {
       }
     });
   } catch (error) {
-    console.error('Error fetching blockchain info:', error);
+    logger.error('Error fetching blockchain info', error, 'BLOCKCHAIN');
     res.status(500).json({
       success: false,
       error: error instanceof Error ? error.message : 'Unknown error'
@@ -102,7 +104,7 @@ app.get('/api/blockchain/verify-lease/:leaseHash', async (req: Request, res: Res
       error: result.error
     });
   } catch (error) {
-    console.error('Error verifying lease:', error);
+    logger.error('Error verifying lease', error, 'BLOCKCHAIN');
     res.status(500).json({
       success: false,
       error: error instanceof Error ? error.message : 'Unknown error'
@@ -126,7 +128,7 @@ app.get('/api/blockchain/wallet/:address/balance', async (req: Request, res: Res
 
     res.json(result);
   } catch (error) {
-    console.error('Error fetching wallet balance:', error);
+    logger.error('Error fetching wallet balance', error, 'BLOCKCHAIN');
     res.status(500).json({
       success: false,
       error: error instanceof Error ? error.message : 'Unknown error'
@@ -149,7 +151,7 @@ app.get('/api/circle/wallet/:userId', async (req: Request, res: Response) => {
       });
     }
 
-    console.log(`💼 [Circle API] Getting wallet for user: ${userId}, role: ${role}`);
+    logger.info(`Getting wallet for user: ${userId}, role: ${role}`, undefined, 'CIRCLE_API');
 
     // Get wallet info from Circle signing service
     const result = await circleSigningService.getOrCreateUserWallet(userId, role, walletId);
@@ -174,10 +176,10 @@ app.get('/api/circle/wallet/:userId', async (req: Request, res: Response) => {
       })
       .eq('id', userId);
 
-    console.log(`✅ [Circle API] Wallet connected for ${role}:`, {
+    logger.success(`Wallet connected for ${role}`, {
       walletId: result.walletId,
       address: result.address
-    });
+    }, 'CIRCLE_API');
 
     res.json({
       success: true,
@@ -189,7 +191,7 @@ app.get('/api/circle/wallet/:userId', async (req: Request, res: Response) => {
       }
     });
   } catch (error) {
-    console.error('❌ [Circle API] Error getting wallet:', error);
+    logger.error('Error getting wallet', error, 'CIRCLE_API');
     res.status(500).json({
       success: false,
       error: error instanceof Error ? error.message : 'Unknown error'
@@ -213,7 +215,7 @@ app.post('/api/circle/sign-message', async (req: Request, res: Response) => {
 
     res.json(result);
   } catch (error) {
-    console.error('Error signing message:', error);
+    logger.error('Error signing message', error, 'CIRCLE_API');
     res.status(500).json({
       success: false,
       error: error instanceof Error ? error.message : 'Unknown error'
@@ -233,7 +235,7 @@ app.post('/api/wallet/phantom/connect', async (req: Request, res: Response) => {
       });
     }
 
-    console.log(`🟣 [Phantom] Connecting wallet for user: ${userId}`);
+    logger.info(`Connecting Phantom wallet for user: ${userId}`, { address }, 'PHANTOM');
 
     // Save to database
     await supabase
@@ -244,7 +246,7 @@ app.post('/api/wallet/phantom/connect', async (req: Request, res: Response) => {
       })
       .eq('id', userId);
 
-    console.log(`✅ [Phantom] Wallet connected:`, address);
+    logger.success('Phantom wallet connected', { address }, 'PHANTOM');
 
     res.json({
       success: true,
@@ -255,7 +257,7 @@ app.post('/api/wallet/phantom/connect', async (req: Request, res: Response) => {
       }
     });
   } catch (error) {
-    console.error('❌ [Phantom] Error connecting wallet:', error);
+    logger.error('Error connecting Phantom wallet', error, 'PHANTOM');
     res.status(500).json({
       success: false,
       error: error instanceof Error ? error.message : 'Unknown error'
@@ -275,20 +277,20 @@ app.get('/api/properties', async (req: Request, res: Response) => {
 
     // Filter by manager_id if provided (for manager dashboard)
     if (manager_id) {
-      console.log('🏛️ [Properties] Fetching properties for manager:', manager_id);
+      logger.info(`Fetching properties for manager: ${manager_id}`, undefined, 'PROPERTIES');
       query = query.eq('owner_id', manager_id);
     } else {
-      console.log('⚠️ [Properties] No manager_id provided - returning all properties (public view)');
+      logger.warn('No manager_id provided - returning all properties (public view)', undefined, 'PROPERTIES');
     }
 
     const { data, error } = await query.order('created_at', { ascending: false });
 
     if (error) throw error;
 
-    console.log('✅ [Properties] Returned', data?.length || 0, 'properties');
+    logger.info(`Returned ${data?.length || 0} properties`, undefined, 'PROPERTIES');
     res.json({ success: true, data });
   } catch (error) {
-    console.error('Error fetching properties:', error);
+    logger.error('Error fetching properties', error, 'PROPERTIES');
     res.status(500).json({ 
       success: false, 
       error: error instanceof Error ? error.message : 'Unknown error' 
@@ -358,11 +360,11 @@ app.get('/api/properties/public', async (_req: Request, res: Response) => {
       // Filter out properties that are rented or have active leases
       .filter((property: any) => property.availability_status === 'available');
 
-    console.log(`📋 [Public Properties] Returning ${enrichedProperties?.length || 0} available properties out of ${properties?.length || 0} total active properties`);
+    logger.info(`Returning ${enrichedProperties?.length || 0} available properties out of ${properties?.length || 0} total active properties`, undefined, 'PUBLIC_PROPERTIES');
 
     res.json({ success: true, data: enrichedProperties });
   } catch (error) {
-    console.error('Error fetching public properties:', error);
+    logger.error('Error fetching public properties', error, 'PUBLIC_PROPERTIES');
     res.status(500).json({ 
       success: false, 
       error: error instanceof Error ? error.message : 'Unknown error' 
@@ -5082,7 +5084,7 @@ app.post('/api/leases/:leaseId/migrate-chat', async (req: Request, res: Response
     const { leaseId } = req.params;
     const { applicationId } = req.body;
 
-    console.log('🔄 [Migrate Chat] Application:', applicationId, '→ Lease:', leaseId);
+    logger.info('Migrating chat from application to lease', { applicationId, leaseId }, 'CHAT');
 
     if (!applicationId) {
       return res.status(400).json({
@@ -5099,11 +5101,11 @@ app.post('/api/leases/:leaseId/migrate-chat', async (req: Request, res: Response
       .select();
 
     if (error) {
-      console.error('❌ Error migrating chat:', error);
+      logger.error('Error migrating chat', error, 'CHAT');
       throw error;
     }
 
-    console.log(`✅ Migrated ${data?.length || 0} messages to lease`);
+    logger.success(`Migrated ${data?.length || 0} messages to lease`, undefined, 'CHAT');
 
     res.json({ 
       success: true, 
@@ -5111,7 +5113,7 @@ app.post('/api/leases/:leaseId/migrate-chat', async (req: Request, res: Response
       message: `Chat conversation migrated from application to lease`
     });
   } catch (error) {
-    console.error('❌ Error migrating chat:', error);
+    logger.error('Error migrating chat', error, 'CHAT');
     res.status(500).json({
       success: false,
       error: error instanceof Error ? error.message : 'Unknown error'
@@ -5121,14 +5123,14 @@ app.post('/api/leases/:leaseId/migrate-chat', async (req: Request, res: Response
 
 // Start server
 app.listen(PORT, () => {
-  console.log('🚀 RentFlow AI Backend Server');
-  console.log('================================');
-  console.log(`✅ Server running on http://localhost:${PORT}`);
-  console.log(`🌐 Network: ${process.env.BLOCKCHAIN_NETWORK || 'solana'}`);
-  console.log(`📍 Deployer: ${process.env.DEPLOYER_ADDRESS}`);
-  console.log(`🤖 AI Wallet: ${process.env.AI_WALLET_ADDRESS}`);
-  console.log(`🗄️  Database: ${process.env.SUPABASE_URL}`);
-  console.log('================================\n');
+  logger.info('RentFlow AI Backend Server', undefined, 'SERVER');
+  logger.info('================================', undefined, 'SERVER');
+  logger.success(`Server running on http://localhost:${PORT}`, undefined, 'SERVER');
+  logger.info(`Network: ${process.env.BLOCKCHAIN_NETWORK || 'solana'}`, undefined, 'SERVER');
+  logger.info(`Deployer: ${process.env.DEPLOYER_ADDRESS}`, undefined, 'SERVER');
+  logger.info(`AI Wallet: ${process.env.AI_WALLET_ADDRESS}`, undefined, 'SERVER');
+  logger.info(`Database: ${process.env.SUPABASE_URL}`, undefined, 'SERVER');
+  logger.info('================================', undefined, 'SERVER');
   
   // Start voice notification scheduler (check every 60 minutes)
   voiceNotificationScheduler.start(60);
