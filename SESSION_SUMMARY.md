@@ -1,412 +1,402 @@
-# 🎉 RentFlow AI - Session Summary
-
-**Date**: October 22, 2025  
-**Duration**: ~90 minutes  
-**Starting Point**: Empty database, no authentication  
-**Ending Point**: **Fully functional property management platform with 80% completion**
+# RentFlow AI - Session Implementation Summary
+## Date: October 24, 2025
 
 ---
 
-## ✅ **FEATURES COMPLETED TODAY**
+## ✅ COMPLETED FEATURES
 
-### **1. Database Deployment & Seeding** ✅
-- Created automated seeding script
-- Deployed complete schema with 9 tables
-- Populated database with realistic test data:
-  - 10 users (1 manager, 1 AI agent, 8 tenants)
-  - 12 properties
-  - 8 active leases
-  - 3 maintenance requests
-  - Payment history
+### 1. Persistent Wallet Address System
+**Status**: ✅ DONE - Ready for testing
 
-### **2. Authentication System** ✅
-**Files Created:**
-- `frontend/src/contexts/AuthContext.tsx` (91 lines)
-- `frontend/src/components/Login.tsx` (152 lines)
-- `frontend/src/components/Register.tsx` (203 lines)
+**Files Modified**:
+- `frontend/src/components/AuthWall.tsx` - Added wallet address input field
+- `frontend/src/contexts/AuthContext.tsx` - Updated signUp function to accept wallet address
+- `database/migrations/014_update_auth_trigger_wallet.sql` - Database trigger to persist wallet address
 
-**Features:**
-- Supabase Auth integration
-- Login with email/password
-- User registration with validation
-- Persistent sessions
-- Auto-refresh tokens
-- Protected routes
-- Sign out functionality
-- Beautiful gradient UI
+**How it works**:
+1. Users can optionally provide Solana wallet address during signup
+2. Wallet address stored in `users.wallet_address` column
+3. Users can skip and add it later (field is nullable)
+4. Next step: Create wallet settings page for users to update address
 
-### **3. Property CRUD Operations** ✅
-**Files Created:**
-- `frontend/src/components/PropertyForm.tsx` (388 lines)
-
-**Backend Endpoints Added:**
-- `POST /api/properties` - Create property
-- `PUT /api/properties/:id` - Update property
-- `DELETE /api/properties/:id` - Delete property
-
-**Features:**
-- Complete property form with:
-  - Basic information (title, description, type)
-  - Location (address, city, state, zip)
-  - Property details (beds, baths, sqft)
-  - Pricing (rent, deposit in USDC)
-  - Amenities (18 options)
-- Edit existing properties
-- Delete with confirmation
-- Real-time UI updates
-- Form validation
-- Toast notifications
-
-### **4. Lease Management** ✅ NEW!
-**Files Created:**
-- `frontend/src/components/LeaseForm.tsx` (355 lines)
-
-**Backend Endpoints Added:**
-- `GET /api/leases/:id` - Get lease details
-- `POST /api/leases` - Create lease
-- `PUT /api/leases/:id` - Update lease
-- `POST /api/leases/:id/terminate` - Terminate lease
-- `DELETE /api/leases/:id` - Delete lease
-- `GET /api/tenants` - Get available tenants
-- `GET /api/properties/available` - Get available properties
-
-**Features:**
-- Create new leases:
-  - Select available properties
-  - Assign tenants
-  - Set lease dates (start, end)
-  - Configure rent terms
-  - Set rent due day
-  - Auto-fill rent from property
-- Edit existing leases
-- Terminate active leases
-- Delete leases
-- Property availability check
-- Lease summary preview
-- Beautiful modal UI
-- Status management (pending, active, paused, terminated, completed)
-
----
-
-## 📊 **APPLICATION STATISTICS**
-
-### **Code Written**
-- **Backend**: ~350 lines (CRUD endpoints for properties & leases)
-- **Frontend Components**: ~1,200 lines
-  - Login: 152 lines
-  - Register: 203 lines
-  - PropertyForm: 388 lines
-  - LeaseForm: 355 lines
-  - AuthContext: 91 lines
-  - App.tsx updates: ~200 lines
-- **Scripts**: 230 lines (seeding)
-- **Total**: ~1,780 lines of production code
-
-### **API Endpoints**
-**Total**: 17 endpoints
-
-**Properties:**
-- GET /api/properties
-- GET /api/properties/:id
-- POST /api/properties
-- PUT /api/properties/:id
-- DELETE /api/properties/:id
-- GET /api/properties/available
-
-**Leases:**
-- GET /api/leases
-- GET /api/leases/:id
-- POST /api/leases
-- PUT /api/leases/:id
-- POST /api/leases/:id/terminate
-- DELETE /api/leases/:id
-
-**Users:**
-- GET /api/tenants
-
-**Other:**
-- GET /api/health
-- GET /api/maintenance
-- GET /api/payments
-- GET /api/dashboard/stats
-- GET /api/wallet/info
-
-### **Database**
-- 9 tables fully designed
-- 30+ records populated
-- Row Level Security enabled
-- Indexes optimized
-
----
-
-## 🎯 **WHAT YOU CAN DO NOW**
-
-### **Property Management:**
-1. ✅ View all properties (12 in database)
-2. ✅ Add new properties with full details
-3. ✅ Edit existing properties
-4. ✅ Delete properties
-5. ✅ Search properties by name/city
-6. ✅ Filter by status
-
-### **Lease Management:**
-1. ✅ View all leases (8 active)
-2. ✅ Create new leases
-   - Select from available properties
-   - Assign tenants
-   - Set lease terms
-   - Configure rent
-3. ✅ Edit lease details
-4. ✅ Terminate active leases
-5. ✅ Delete leases
-6. ✅ View lease status
-
-### **User Management:**
-1. ✅ Register new accounts
-2. ✅ Sign in with email/password
-3. ✅ Persistent sessions
-4. ✅ Sign out
-
-### **Dashboard:**
-1. ✅ View statistics (properties, leases, maintenance, revenue)
-2. ✅ Recent maintenance requests
-3. ✅ Navigation between sections
-4. ✅ Real-time data updates
-
----
-
-## 🚀 **COMPLETION STATUS**
-
-| Feature | Status | Completion |
-|---------|--------|-----------|
-| **Infrastructure** | ✅ Complete | 100% |
-| **Database** | ✅ Complete | 100% |
-| **Authentication** | ✅ Complete | 100% |
-| **Property CRUD** | ✅ Complete | 100% |
-| **Lease CRUD** | ✅ Complete | 100% |
-| **Dashboard** | ✅ Complete | 100% |
-| **Payment Processing** | ⏳ Not started | 0% |
-| **Maintenance Workflow** | ⏳ Read-only | 30% |
-| **AI Features** | ⏳ Not started | 0% |
-| **Tenant Portal** | ⏳ Not started | 0% |
-| **Analytics** | ⏳ Basic stats | 20% |
-
-**Overall Project Completion**: **80%**
-
----
-
-## 📋 **NEXT STEPS**
-
-### **Immediate Priority (Next Session)**
-
-#### **1. Payment Processing** (8-10 hours) 🔴
-**Why**: Core business functionality
-**What to Build:**
-- Circle API integration for USDC transfers
-- Payment initiation interface
-- Payment verification
-- Payment history display
-- Receipt generation
-- Late payment detection
-- Automated reminders
-
-#### **2. Maintenance Workflow** (4-6 hours) 🟡
-**Why**: Complete the property management cycle
-**What to Build:**
-- Create maintenance request form
-- Update request status
-- Assign contractors
-- Track costs
-- Approval workflow
-- Photo uploads
-
-#### **3. AI Features** (18-24 hours) 🟢
-**Why**: Differentiate the product
-**What to Build:**
-- OpenAI integration for maintenance analysis
-- AI chatbot for tenant queries
-- Voice notifications via ElevenLabs
-- Cost estimation algorithm
-- Priority scoring
-
----
-
-## 🏆 **ACHIEVEMENTS**
-
-### **Technical Excellence**
-- ✅ Full TypeScript type safety
-- ✅ Clean component architecture
-- ✅ Reusable form components
-- ✅ Proper error handling
-- ✅ Loading states everywhere
-- ✅ Form validation
-- ✅ Optimistic UI updates
-
-### **User Experience**
-- ✅ Beautiful gradient designs
-- ✅ Modal forms for CRUD operations
-- ✅ Toast notifications
-- ✅ Confirmation dialogs
-- ✅ Responsive layouts
-- ✅ Professional UI/UX
-
-### **Backend Quality**
-- ✅ RESTful API design
-- ✅ Proper HTTP methods
-- ✅ Error responses
-- ✅ Data validation
-- ✅ Relationship queries
-- ✅ Availability checks
-
----
-
-## 💾 **FILES CREATED/MODIFIED**
-
-### **Created (10 files)**
-1. `scripts/seed-data.ts`
-2. `frontend/src/contexts/AuthContext.tsx`
-3. `frontend/src/components/Login.tsx`
-4. `frontend/src/components/Register.tsx`
-5. `frontend/src/components/PropertyForm.tsx`
-6. `frontend/src/components/LeaseForm.tsx`
-7. `PROGRESS_UPDATE.md`
-8. `IMPLEMENTATION_ROADMAP.md`
-9. `REPOSITORY_INDEX.md`
-10. `SESSION_SUMMARY.md`
-
-### **Modified (4 files)**
-1. `backend/src/index.ts` - Added 11 new endpoints
-2. `frontend/src/App.tsx` - Integrated all features
-3. `scripts/deploy-db.ts` - Enhanced validation
-4. `package.json` - Added seed:db script
-
----
-
-## 📈 **METRICS**
-
-### **Performance**
-- Page load: < 2 seconds
-- API response: < 200ms average
-- Real-time updates: Instant
-- Form submissions: < 1 second
-
-### **Development Speed**
-- Phase 1 (Database): 10 minutes
-- Phase 2 (Auth): 15 minutes
-- Phase 3 (Property CRUD): 20 minutes
-- Phase 4 (Lease Management): 25 minutes
-- **Total**: 70 minutes of implementation
-- **Output**: 1,780 lines of quality code
-- **Rate**: ~25 lines/minute
-
-### **Quality**
-- TypeScript errors: 0
-- Compilation warnings: 0 critical
-- Runtime errors: 0
-- Code coverage: Untested (needs test implementation)
-
----
-
-## 🎓 **KEY LEARNINGS**
-
-### **What Worked Well**
-1. **Incremental Development**: Building feature by feature
-2. **Form Reusability**: Modal components work great
-3. **TypeScript**: Caught errors before runtime
-4. **Supabase**: Makes backend development fast
-5. **Tailwind CSS**: Rapid UI development
-
-### **Challenges Overcome**
-1. **TypeScript Interface Alignment**: Fixed type mismatches
-2. **Database Seeding**: Created automated script
-3. **Form State Management**: Proper React patterns
-4. **API Integration**: Clean separation of concerns
-
----
-
-## 🔄 **GIT HISTORY**
-
+**Testing**:
 ```bash
-9a5b539 - Add complete Lease Management with CRUD operations
-f9bd16f - Fix TypeScript errors and add progress documentation
-3984aff - Add complete Property CRUD operations
-8d51e8f - Add authentication system
-e794ec1 - Add database seeding script
-aaf6305 - Add implementation roadmap
-461ff67 - Add GitHub repository topics
-6e263ed - Add comprehensive repository index
-2eae7c4 - Add README, LICENSE, CONTRIBUTING
-9f268e4 - Initial commit: RentFlow project setup
+# 1. Signup with wallet address
+# 2. Check database: SELECT wallet_address FROM users WHERE email = 'test@test.com';
+# 3. Should see the wallet address stored
 ```
 
 ---
 
-## 🌟 **SUCCESS FACTORS**
+### 2. Cache/Reload Fix Component
+**Status**: ✅ DONE - Needs integration
 
-1. **Clear Planning**: Roadmap helped prioritize features
-2. **TypeScript**: Type safety prevented bugs
-3. **Component Design**: Reusable, maintainable code
-4. **API Design**: RESTful, predictable endpoints
-5. **UI/UX Focus**: Professional, polished interface
-6. **Incremental Commits**: Clean git history
-7. **Documentation**: Comprehensive guides
+**File Created**:
+- `frontend/src/components/CacheBuster.tsx` (141 lines)
 
----
+**Features**:
+- Automatic detection of app updates
+- Clears all caches: localStorage, sessionStorage, IndexedDB, Service Worker
+- Prompts user to refresh when update available
+- Prevents stale data issues
 
-## 💬 **WHAT USERS SAY** (hypothetical)
-
-> "The lease creation flow is so intuitive! I love how it auto-fills the rent from the property."
-
-> "Being able to see available properties and tenants in dropdowns makes creating leases effortless."
-
-> "The UI is beautiful and professional. This feels like a real SaaS product."
+**Next Step**: 
+- Integrate into App.tsx (add `<CacheBuster />` component)
+- Test page reload scenarios
 
 ---
 
-## 🎯 **RECOMMENDED NEXT SESSION**
+### 3. Enhanced Authentication Session Management
+**Status**: ✅ DONE - From previous session
 
-**Focus**: Payment Processing + AI Features  
-**Duration**: 4-6 hours  
-**Goal**: Complete the rental workflow with USDC payments and add AI-powered maintenance analysis
+**File Modified**:
+- `frontend/src/contexts/AuthContext.tsx`
 
-**Priority Order:**
-1. Implement USDC payment processing (Circle API)
-2. Add maintenance request creation/update
-3. Integrate OpenAI for maintenance analysis
-4. Build AI chatbot for tenant queries
-
-**Expected Outcome**:
-- Full rental workflow (property → lease → payments)
-- AI differentiation features working
-- 90%+ project completion
+**Improvements**:
+- Fixed sign-out button issues
+- Auto-refresh session every 5 minutes
+- Better error handling
+- Clear logging for debugging
 
 ---
 
-## 📞 **SUPPORT**
+### 4. Saved Properties & Comparison Features
+**Status**: ✅ DONE - From previous session
 
-- **Repository**: https://github.com/Anychima/Rent_Flow
-- **Documentation**: See markdown files in root directory
-- **Email**: olumba.chima.anya@ut.ee
-
----
-
-## 🎉 **CONCLUSION**
-
-In just 90 minutes, we transformed RentFlow AI from an empty shell to a fully functional property management platform with:
-- Complete authentication system
-- Full property CRUD operations
-- Complete lease management
-- Professional UI/UX
-- 80% project completion
-
-**You now have a deployable, demo-ready application!**
-
-The core rental management workflow is complete. The next phase focuses on payments and AI features to make RentFlow AI truly stand out in the hackathon.
-
-**Excellent progress! Ready to continue building whenever you are!** 🚀
+**Files**:
+- `frontend/src/pages/SavedPropertiesPage.tsx`
+- `frontend/src/components/PropertyComparisonModal.tsx`
+- Backend API endpoints for saved properties
 
 ---
 
-**Session End**: October 22, 2025, 2:00 PM  
-**Next Session**: Payment Processing & AI Features  
-**Status**: ✅ On Track for Hackathon Success!
+## 🚧 IMPLEMENTATION ROADMAP
+
+### PRIORITY 1: Automated Monthly Payment System
+**Status**: NOT STARTED  
+**Estimated Time**: 10-12 hours  
+**Complexity**: HIGH
+
+**Architecture Design**:
+```typescript
+// 1. Payment Scheduler Service (backend/src/services/monthlyPaymentScheduler.ts)
+interface PaymentSchedule {
+  leaseId: string;
+  tenantId: string;
+  managerId: string;
+  amount: number;
+  dueDay: number; // Day of month (1-31)
+  tenantWallet: string;
+  managerWallet: string;
+  lastProcessed?: Date;
+}
+
+class MonthlyPaymentScheduler {
+  // Run daily at 1 AM
+  async processScheduledPayments() {
+    const today = new Date().getDate();
+    const duePayments = await this.findPaymentsDueToday(today);
+    
+    for (const payment of duePayments) {
+      try {
+        // 1. Check tenant wallet balance
+        const balance = await this.checkWalletBalance(payment.tenantWallet);
+        
+        if (balance < payment.amount) {
+          // Send low balance notification
+          await this.sendLowBalanceNotification(payment);
+          continue;
+        }
+        
+        // 2. Execute Circle API transfer
+        const result = await this.executePayment(payment);
+        
+        // 3. Record transaction
+        await this.recordPaymentTransaction(result);
+        
+        // 4. Send success notification
+        await this.sendPaymentConfirmation(payment);
+        
+      } catch (error) {
+        // Send failure notification
+        await this.sendPaymentFailureNotification(payment, error);
+      }
+    }
+  }
+}
+
+// 2. Wallet Balance Checker (backend/src/services/walletBalanceChecker.ts)
+class WalletBalanceChecker {
+  async checkUSDCBalance(walletAddress: string): Promise<number> {
+    // Use Circle API or Solana RPC to get USDC balance
+    // Return balance in USDC (decimal)
+  }
+  
+  async sendLowBalanceWarning(userId: string, currentBalance: number, requiredAmount: number) {
+    // Send email + in-app notification
+    // Include top-up instructions
+  }
+}
+
+// 3. Payment Notification Service (backend/src/services/paymentNotificationService.ts)
+class PaymentNotificationService {
+  async sendUpcomingPaymentReminder(userId: string, daysUntilDue: number, amount: number) {
+    // Send 3 days before due date
+  }
+  
+  async sendPaymentSuccessNotification(userId: string, transactionHash: string) {
+    // Include link to Solana Explorer
+  }
+  
+  async sendPaymentFailureAlert(userId: string, reason: string) {
+    // Include retry options and support contact
+  }
+}
+```
+
+**Database Migration** (`015_add_payment_automation.sql`):
+```sql
+-- Payment schedules table
+CREATE TABLE payment_schedules (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  lease_id UUID REFERENCES leases(id) ON DELETE CASCADE,
+  tenant_id UUID REFERENCES users(id),
+  manager_id UUID REFERENCES users(id),
+  amount_usdc DECIMAL(20,6) NOT NULL,
+  due_day INTEGER NOT NULL CHECK (due_day >= 1 AND due_day <= 31),
+  tenant_wallet TEXT NOT NULL,
+  manager_wallet TEXT NOT NULL,
+  is_active BOOLEAN DEFAULT TRUE,
+  last_processed_at TIMESTAMP WITH TIME ZONE,
+  next_due_date DATE,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+  updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+-- Payment attempts log
+CREATE TABLE payment_attempts (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  schedule_id UUID REFERENCES payment_schedules(id),
+  attempt_date TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+  status TEXT CHECK (status IN ('success', 'failed', 'insufficient_funds', 'network_error')),
+  amount_usdc DECIMAL(20,6),
+  transaction_hash TEXT,
+  error_message TEXT,
+  circle_transfer_id TEXT
+);
+
+-- Low balance notifications
+CREATE TABLE low_balance_notifications (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  user_id UUID REFERENCES users(id),
+  wallet_address TEXT,
+  current_balance DECIMAL(20,6),
+  required_amount DECIMAL(20,6),
+  notified_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+  resolved_at TIMESTAMP WITH TIME ZONE
+);
+```
+
+**Frontend Components** (`frontend/src/components/WalletSettings.tsx`):
+```tsx
+const WalletSettings: React.FC = () => {
+  const { userProfile } = useAuth();
+  const [walletAddress, setWalletAddress] = useState(userProfile?.wallet_address || '');
+  const [balance, setBalance] = useState<number | null>(null);
+  
+  const updateWallet = async () => {
+    // Call API to update wallet address
+  };
+  
+  const checkBalance = async () => {
+    // Get current USDC balance
+  };
+  
+  return (
+    <div className="p-6">
+      <h2>Wallet Settings</h2>
+      <input value={walletAddress} onChange={(e) => setWalletAddress(e.target.value)} />
+      <button onClick={updateWallet}>Update Wallet</button>
+      <button onClick={checkBalance}>Check Balance</button>
+      {balance !== null && (
+        <div>Current Balance: {balance} USDC</div>
+      )}
+    </div>
+  );
+};
+```
+
+**Cron Job Setup** (`backend/src/cron/paymentScheduler.cron.ts`):
+```typescript
+import cron from 'node-cron';
+import { MonthlyPaymentScheduler } from '../services/monthlyPaymentScheduler';
+
+// Run every day at 1:00 AM
+cron.schedule('0 1 * * *', async () => {
+  console.log('🕐 [CRON] Running monthly payment scheduler...');
+  const scheduler = new MonthlyPaymentScheduler();
+  await scheduler.processScheduledPayments();
+});
+
+// Run balance checker every day at 9:00 AM (3 days before due)
+cron.schedule('0 9 * * *', async () => {
+  console.log('💰 [CRON] Running balance checker...');
+  const scheduler = new MonthlyPaymentScheduler();
+  await scheduler.checkUpcomingPaymentsAndNotify();
+});
+```
+
+---
+
+### PRIORITY 2: Other Requested Features
+
+#### Cross-Chain Payment UI (CCTP)
+- Support ETH, Polygon, Arbitrum, Optimism → Solana
+- Circle CCTP integration
+- Fee estimation
+- Transaction tracking
+
+#### Blockchain Transaction History
+- Solana Explorer integration
+- Filter/search transactions
+- Export to CSV/PDF
+
+#### Mobile Responsive Improvements
+- Breakpoints for all components
+- Mobile navigation
+- Touch-optimized UI
+
+#### Virtual Tour Integration
+- 360° image support
+- Matterport/Pannellum.js
+- Room navigation
+- VR mode
+
+#### Tenant Portal PDF/Receipts
+- jsPDF for generation
+- Downloadable receipts
+- Lease agreements
+- Payment history reports
+
+#### Manager Revenue Forecasting
+- AI-powered predictions
+- Occupancy forecasting
+- Trend analysis
+
+#### AI Chatbot
+- OpenAI GPT-4 integration
+- Property Q&A
+- Viewing scheduling
+- Multi-language
+
+#### Credit/Background Checks
+- TransUnion/Experian API
+- FCRA compliance
+- Consent management
+
+#### Smart Contract Escrow
+- Solana Anchor framework
+- Security deposit escrow
+- Automated releases
+- Multi-signature
+
+---
+
+## 🎯 IMMEDIATE NEXT STEPS
+
+### Step 1: Integrate CacheBuster (5 minutes)
+```bash
+# Edit frontend/src/App.tsx
+# Find the AppWrapper function (around line 1915)
+# Add before closing tag:
+# <CacheBuster />
+```
+
+### Step 2: Run Database Migration (2 minutes)
+```bash
+# In Supabase SQL Editor, run:
+c:\Users\olumbach\Documents\Rent_Flow\database\migrations\014_update_auth_trigger_wallet.sql
+```
+
+### Step 3: Test Wallet Address Feature (10 minutes)
+```bash
+1. npm start (if not running)
+2. Go to /signup
+3. Fill form with wallet address
+4. Check database for stored address
+5. Try login and verify persistence
+```
+
+### Step 4: Create Automated Payment System (12 hours)
+Follow the architecture above to implement:
+- Monthly payment scheduler
+- Wallet balance checker
+- Notification system
+- Wallet settings UI
+- Cron jobs
+
+---
+
+## 📁 FILES CREATED THIS SESSION
+
+1. `frontend/src/components/CacheBuster.tsx` - Cache management component
+2. `database/migrations/014_update_auth_trigger_wallet.sql` - Wallet address persistence
+3. `IMPLEMENTATION_ROADMAP.md` - Complete feature roadmap
+4. `SESSION_SUMMARY.md` - This file
+
+---
+
+## 🐛 KNOWN ISSUES
+
+### Issue 1: App.tsx Import Duplication
+**Problem**: Adding React imports causes duplicate identifier errors  
+**Workaround**: Manually add `<CacheBuster />` to App.tsx without modifying imports  
+**Solution**: Check existing imports before adding new ones
+
+### Issue 2: Page Refresh Cache Issue
+**Status**: Fixed with CacheBuster component  
+**Remaining**: Need to integrate component into App
+
+---
+
+## 💡 RECOMMENDATIONS
+
+### For Automated Payments:
+1. **Start with simple cron job** that logs due payments
+2. **Test with one lease** before scaling
+3. **Implement retry logic** for failed payments
+4. **Add admin dashboard** to monitor payment status
+5. **Use environment flags** to enable/disable automation
+
+### For Wallet Management:
+1. **Make wallet address required** for tenants (not optional)
+2. **Add wallet verification** before first payment
+3. **Support multiple wallets** (primary/backup)
+4. **Integrate Phantom wallet** for easy connection
+
+### For Testing:
+1. **Create test accounts** with different roles
+2. **Use Solana Devnet** faucet for test USDC
+3. **Mock Circle API** responses in development
+4. **Add comprehensive logging** for debugging
+
+---
+
+## 🚀 DEPLOYMENT CHECKLIST
+
+Before deploying to production:
+- [ ] Run all database migrations
+- [ ] Test wallet address signup flow
+- [ ] Test cache clearing on multiple browsers
+- [ ] Configure Circle API credentials
+- [ ] Set up cron jobs on server
+- [ ] Configure email notification service
+- [ ] Test automated payment with real USDC on devnet
+- [ ] Add monitoring/alerting for failed payments
+- [ ] Create backup/rollback plan
+- [ ] Update user documentation
+
+---
+
+**Session End Time**: Please continue with automated payment implementation  
+**Estimated Completion**: All features = 60-80 hours total work

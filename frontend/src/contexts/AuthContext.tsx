@@ -23,7 +23,7 @@ interface AuthContextType {
   session: Session | null;
   loading: boolean;
   signIn: (email: string, password: string) => Promise<{ error?: any }>;
-  signUp: (email: string, password: string, fullName: string, role?: string) => Promise<{ error?: any }>;
+  signUp: (email: string, password: string, fullName: string, role?: string, walletAddress?: string) => Promise<{ error?: any }>;
   signOut: () => Promise<void>;
   refreshUserProfile: () => Promise<void>; // NEW: Force refresh user profile
   supabase: typeof supabase;
@@ -103,6 +103,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     let mounted = true;
+    let refreshInterval: NodeJS.Timeout | null = null;
 
     // Get initial session
     const initializeAuth = async () => {
@@ -114,6 +115,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         if (session) {
           console.log('   User ID:', session.user.id);
           console.log('   Email:', session.user.email);
+          console.log('   Expires:', new Date(session.expires_at! * 1000).toLocaleString());
         }
         
         if (!mounted) {
@@ -151,12 +153,35 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     initializeAuth();
 
+    // Set up periodic session refresh (every 5 minutes)
+    refreshInterval = setInterval(async () => {
+      if (!mounted) return;
+      
+      try {
+        const { data: { session } } = await supabase.auth.getSession();
+        if (session) {
+          console.log('♻️  [AuthContext] Periodic session check - session active');
+          // Session is automatically refreshed by Supabase if needed
+        } else {
+          console.log('⚠️  [AuthContext] Periodic session check - no session');
+        }
+      } catch (error) {
+        console.error('❌ [AuthContext] Error during periodic session check:', error);
+      }
+    }, 5 * 60 * 1000); // Every 5 minutes
+
     // Listen for auth changes
     const {
       data: { subscription },
-    } = supabase.auth.onAuthStateChange(async (event, session) => {
+    } = supabase.auth.onAuthStateChange(async (event, session) => {  
       console.log('🔄 [AuthContext] Auth state changed:', event);
-      if (!mounted) return;
+      console.log('   Session:', session ? 'Active' : 'Expired/None');
+      console.log('   Event:', event);
+      
+      if (!mounted) {
+        console.log('⚠️  [AuthContext] Component unmounted, ignoring auth change');
+        return;
+      }
       
       setSession(session);
       setUser(session?.user ?? null);
@@ -165,7 +190,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         console.log('📊 [AuthContext] Auth change - fetching profile...');
         const profile = await fetchUserProfile(session.user.id);
         if (mounted) {
-          setUserProfile(profile);
+          if (profile) {
+            console.log('✅ [AuthContext] Profile loaded after auth change');
+            setUserProfile(profile);
+          } else {
+            console.error('❌ [AuthContext] Profile not found after auth change');
+            setUserProfile(null);
+          }
         }
       } else {
         console.log('🚫 [AuthContext] Auth change - no session, clearing profile');
@@ -173,12 +204,29 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           setUserProfile(null);
         }
       }
+      
+      // Handle specific events
+      if (event === 'SIGNED_OUT') {
+        console.log('🚪 [AuthContext] User signed out - clearing all state');
+        if (mounted) {
+          setUser(null);
+          setUserProfile(null);
+          setSession(null);
+        }
+      } else if (event === 'TOKEN_REFRESHED') {
+        console.log('♻️  [AuthContext] Token refreshed successfully');
+      } else if (event === 'USER_UPDATED') {
+        console.log('🔄 [AuthContext] User updated - refreshing profile');
+      }
     });
 
     return () => {
-      console.log('🧹 [AuthContext] Cleaning up subscription');
+      console.log('🧹 [AuthContext] Cleaning up subscription and refresh interval');
       mounted = false;
       subscription.unsubscribe();
+      if (refreshInterval) {
+        clearInterval(refreshInterval);
+      }
     };
   }, []);
 
@@ -226,7 +274,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
-  const signUp = async (email: string, password: string, fullName: string, role?: string) => {
+  const signUp = async (email: string, password: string, fullName: string, role?: string, walletAddress?: string) => {
     const { error } = await supabase.auth.signUp({
       email,
       password,
@@ -234,6 +282,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         data: {
           full_name: fullName,
           role: role || 'prospective_tenant', // Pass role to metadata
+          wallet_address: walletAddress || '', // Pass wallet address to metadata
         },
       },
     });
@@ -241,8 +290,20 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   const signOut = async () => {
-    await supabase.auth.signOut();
-    setUserProfile(null);
+    try {
+      console.log('🚪 [AuthContext] Signing out...');
+      await supabase.auth.signOut();
+      setUser(null);
+      setUserProfile(null);
+      setSession(null);
+      console.log('✅ [AuthContext] Sign out complete');
+    } catch (error) {
+      console.error('❌ [AuthContext] Error during sign out:', error);
+      // Force clear state even if API call fails
+      setUser(null);
+      setUserProfile(null);
+      setSession(null);
+    }
   };
 
   // NEW: Force refresh user profile (useful after role changes)

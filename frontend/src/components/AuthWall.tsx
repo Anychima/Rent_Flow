@@ -9,7 +9,7 @@ interface AuthWallProps {
   mode?: 'login' | 'signup';
 }
 
-const AuthWall: React.FC<AuthWallProps> = ({ onClose, returnUrl, mode: initialMode = 'signup' }) => {
+const AuthWall: React.FC<AuthWallProps> = ({ returnUrl, mode: initialMode = 'signup' }) => {
   const navigate = useNavigate();
   const { signIn, signUp } = useAuth();
   
@@ -19,7 +19,8 @@ const AuthWall: React.FC<AuthWallProps> = ({ onClose, returnUrl, mode: initialMo
     email: '',
     password: '',
     fullName: '',
-    confirmPassword: ''
+    confirmPassword: '',
+    walletAddress: '' // Add wallet address field
   });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -55,7 +56,8 @@ const AuthWall: React.FC<AuthWallProps> = ({ onClose, returnUrl, mode: initialMo
           formData.email,
           formData.password,
           formData.fullName,
-          role // Pass the selected role
+          role, // Pass the selected role
+          formData.walletAddress || undefined // Pass wallet address if provided
         );
 
         if (signUpError) {
@@ -111,14 +113,13 @@ const AuthWall: React.FC<AuthWallProps> = ({ onClose, returnUrl, mode: initialMo
       <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full max-h-[90vh] overflow-y-auto">
         {/* Header */}
         <div className="relative bg-gradient-to-r from-blue-600 to-indigo-600 p-6 rounded-t-2xl">
-          {onClose && (
-            <button
-              onClick={onClose}
-              className="absolute top-4 right-4 text-white/80 hover:text-white transition-colors"
-            >
-              <X className="w-6 h-6" />
-            </button>
-          )}
+          <button
+            onClick={() => navigate('/')}
+            className="absolute top-4 right-4 text-white/80 hover:text-white transition-colors"
+            title="Back to Home"
+          >
+            <X className="w-6 h-6" />
+          </button>
           <div className="text-center text-white">
             <div className="inline-flex items-center justify-center w-16 h-16 bg-white/20 rounded-full mb-4">
               <Home className="w-8 h-8" />
@@ -196,6 +197,29 @@ const AuthWall: React.FC<AuthWallProps> = ({ onClose, returnUrl, mode: initialMo
                   required={mode === 'signup'}
                 />
               </div>
+            </div>
+          )}
+
+          {/* Wallet Address (Signup Only) */}
+          {mode === 'signup' && (
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Wallet Address (Optional)
+              </label>
+              <div className="relative">
+                <Briefcase className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
+                <input
+                  type="text"
+                  name="walletAddress"
+                  value={formData.walletAddress}
+                  onChange={handleInputChange}
+                  placeholder="Your wallet address (can add later)"
+                  className="w-full pl-10 pr-4 py-3 border-2 border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all"
+                />
+              </div>
+              <p className="mt-1 text-xs text-gray-500">
+                💡 You can add or update your wallet address later in settings
+              </p>
             </div>
           )}
 
