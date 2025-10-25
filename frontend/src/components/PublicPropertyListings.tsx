@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Search, MapPin, Home, Bed, Bath, DollarSign, Heart, Filter, User, LogOut, FileText, CheckCircle, X, ChevronDown, ChevronUp, BarChart2 } from 'lucide-react';
+import { Search, MapPin, Home, Bed, Bath, DollarSign, Heart, Filter, User, LogOut, FileText, BarChart2 } from 'lucide-react';
 import axios from 'axios';
 import { useAuth } from '../contexts/AuthContext';
 import PropertyComparisonModal from './PropertyComparisonModal';
