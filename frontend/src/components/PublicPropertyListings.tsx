@@ -1,8 +1,9 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Search, MapPin, Home, Bed, Bath, DollarSign, Heart, Filter, User, LogOut, FileText, CheckCircle } from 'lucide-react';
+import { Search, MapPin, Home, Bed, Bath, DollarSign, Heart, Filter, User, LogOut, FileText, CheckCircle, X, ChevronDown, ChevronUp, BarChart2 } from 'lucide-react';
 import axios from 'axios';
 import { useAuth } from '../contexts/AuthContext';
+import PropertyComparisonModal from './PropertyComparisonModal';
 
 interface Property {
   id: string;
@@ -29,7 +30,6 @@ const PublicPropertyListings: React.FC = () => {
   const navigate = useNavigate();
   const { user, userProfile, signOut } = useAuth();
   
-  // Debug logging for authentication state
   console.log('🏠 [PublicPropertyListings] Component rendered');
   console.log('   User:', user);
   console.log('   UserProfile:', userProfile);
@@ -39,18 +39,37 @@ const PublicPropertyListings: React.FC = () => {
   const [filteredProperties, setFilteredProperties] = useState<Property[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
-  const [filterType, setFilterType] = useState<string>('all');
-  const [maxRent, setMaxRent] = useState<number>(10000);
+  const [filterType, setFilterType] = useState<string[]>([]);
+  const [priceRange, setPriceRange] = useState({ min: 0, max: 10000 });
   const [minBedrooms, setMinBedrooms] = useState<number>(0);
+  const [minBathrooms, setMinBathrooms] = useState<number>(0);
+  const [selectedAmenities, setSelectedAmenities] = useState<string[]>([]);
+  const [sortBy, setSortBy] = useState<'newest' | 'price_asc' | 'price_desc' | 'popular'>('newest');
   const [showFilters, setShowFilters] = useState(false);
+  
+  // Saved properties state
+  const [savedPropertyIds, setSavedPropertyIds] = useState<Set<string>>(new Set());
+  
+  // Comparison state
+  const [compareList, setCompareList] = useState<Property[]>([]);
+  const [showComparison, setShowComparison] = useState(false);
+
+  // Available amenities for filtering
+  const availableAmenities = [
+    'parking', 'gym', 'pool', 'pet_friendly', 'in_unit_laundry',
+    'dishwasher', 'air_conditioning', 'balcony', 'hardwood_floors'
+  ];
 
   useEffect(() => {
     fetchProperties();
-  }, []);
+    if (userProfile?.id) {
+      fetchSavedProperties();
+    }
+  }, [userProfile]);
 
   useEffect(() => {
     applyFilters();
-  }, [properties, searchTerm, filterType, maxRent, minBedrooms]);
+  }, [properties, searchTerm, filterType, priceRange, minBedrooms, minBathrooms, selectedAmenities, sortBy]);
 
   const fetchProperties = async () => {
     try {
@@ -65,10 +84,86 @@ const PublicPropertyListings: React.FC = () => {
     }
   };
 
+  const fetchSavedProperties = async () => {
+    if (!userProfile?.id) return;
+    
+    try {
+      const response = await axios.get(`http://localhost:3001/api/saved-properties/user/${userProfile.id}`);
+      if (response.data.success) {
+        const savedIds = new Set<string>(response.data.data.map((sp: any) => sp.property_id));
+        setSavedPropertyIds(savedIds);
+      }
+    } catch (error) {
+      console.error('Error fetching saved properties:', error);
+    }
+  };
+
+  const toggleSaveProperty = async (propertyId: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    
+    if (!userProfile?.id) {
+      alert('Please login to save properties');
+      return;
+    }
+
+    const isSaved = savedPropertyIds.has(propertyId);
+
+    try {
+      if (isSaved) {
+        await axios.delete(`http://localhost:3001/api/saved-properties/user/${userProfile.id}/property/${propertyId}`);
+        setSavedPropertyIds(prev => {
+          const newSet = new Set(prev);
+          newSet.delete(propertyId);
+          return newSet;
+        });
+      } else {
+        await axios.post('http://localhost:3001/api/saved-properties', {
+          userId: userProfile.id,
+          propertyId
+        });
+        setSavedPropertyIds(prev => new Set([...prev, propertyId]));
+      }
+    } catch (error: any) {
+      console.error('Error toggling saved property:', error);
+      if (error.response?.status !== 409) {
+        alert('Failed to update saved properties');
+      }
+    }
+  };
+
+  const toggleCompare = (property: Property, e: React.MouseEvent) => {
+    e.stopPropagation();
+    
+    const isInCompare = compareList.some(p => p.id === property.id);
+    
+    if (isInCompare) {
+      setCompareList(compareList.filter(p => p.id !== property.id));
+    } else if (compareList.length < 3) {
+      setCompareList([...compareList, property]);
+    } else {
+      alert('You can only compare up to 3 properties at once');
+    }
+  };
+
+  const toggleAmenity = (amenity: string) => {
+    setSelectedAmenities(prev => 
+      prev.includes(amenity) 
+        ? prev.filter(a => a !== amenity)
+        : [...prev, amenity]
+    );
+  };
+
+  const togglePropertyType = (type: string) => {
+    setFilterType(prev => 
+      prev.includes(type)
+        ? prev.filter(t => t !== type)
+        : [...prev, type]
+    );
+  };
+
   const applyFilters = () => {
     let filtered = [...properties];
 
-    // Search filter
     if (searchTerm) {
       filtered = filtered.filter(
         (p) =>
@@ -78,17 +173,41 @@ const PublicPropertyListings: React.FC = () => {
       );
     }
 
-    // Property type filter
-    if (filterType !== 'all') {
-      filtered = filtered.filter((p) => p.property_type === filterType);
+    if (filterType.length > 0) {
+      filtered = filtered.filter((p) => filterType.includes(p.property_type));
     }
 
-    // Max rent filter
-    filtered = filtered.filter((p) => p.monthly_rent_usdc <= maxRent);
+    filtered = filtered.filter((p) => 
+      p.monthly_rent_usdc >= priceRange.min && p.monthly_rent_usdc <= priceRange.max
+    );
 
-    // Min bedrooms filter
     if (minBedrooms > 0) {
       filtered = filtered.filter((p) => p.bedrooms >= minBedrooms);
+    }
+
+    if (minBathrooms > 0) {
+      filtered = filtered.filter((p) => p.bathrooms >= minBathrooms);
+    }
+
+    if (selectedAmenities.length > 0) {
+      filtered = filtered.filter((p) => 
+        selectedAmenities.every(amenity => p.amenities?.includes(amenity))
+      );
+    }
+
+    switch (sortBy) {
+      case 'price_asc':
+        filtered.sort((a, b) => a.monthly_rent_usdc - b.monthly_rent_usdc);
+        break;
+      case 'price_desc':
+        filtered.sort((a, b) => b.monthly_rent_usdc - a.monthly_rent_usdc);
+        break;
+      case 'popular':
+        filtered.sort((a, b) => (b.view_count || 0) - (a.view_count || 0));
+        break;
+      case 'newest':
+      default:
+        break;
     }
 
     setFilteredProperties(filtered);
@@ -128,6 +247,9 @@ const PublicPropertyListings: React.FC = () => {
 
     const statusBadge = getStatusBadge();
 
+    const isSaved = savedPropertyIds.has(property.id);
+    const isInCompare = compareList.some(p => p.id === property.id);
+
     return (
       <div 
         onClick={() => navigate(`/property/${property.id}`)}
@@ -144,15 +266,25 @@ const PublicPropertyListings: React.FC = () => {
             {/* Gradient Overlay */}
             <div className="absolute inset-0 bg-gradient-to-t from-black/50 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
             
-            {/* Save Button */}
+            {/* Save Button - Updated */}
             <button 
-              className="absolute top-3 right-3 bg-white/90 backdrop-blur-sm rounded-full p-2.5 hover:bg-white transition-all duration-200 shadow-lg hover:scale-110"
-              onClick={(e) => {
-                e.stopPropagation();
-                // TODO: Implement save functionality
-              }}
+              className={`absolute top-3 right-3 bg-white/90 backdrop-blur-sm rounded-full p-2.5 hover:bg-white transition-all duration-200 shadow-lg hover:scale-110 ${
+                isSaved ? 'text-red-500' : 'text-gray-700'
+              }`}
+              onClick={(e) => toggleSaveProperty(property.id, e)}
             >
-              <Heart className="w-5 h-5 text-gray-700 hover:text-red-500 transition-colors" />
+              <Heart className={`w-5 h-5 transition-colors ${isSaved ? 'fill-current' : ''}`} />
+            </button>
+            
+            {/* Compare Button */}
+            <button 
+              className={`absolute top-3 right-16 backdrop-blur-sm rounded-full p-2.5 transition-all duration-200 shadow-lg hover:scale-110 ${
+                isInCompare ? 'bg-blue-600 text-white' : 'bg-white/90 text-gray-700 hover:bg-white'
+              }`}
+              onClick={(e) => toggleCompare(property, e)}
+              title="Compare properties"
+            >
+              <BarChart2 className="w-5 h-5" />
             </button>
             
             {/* Property Type Badge */}

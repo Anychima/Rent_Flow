@@ -4397,6 +4397,187 @@ app.get('/api/micropayments', async (req: Request, res: Response) => {
   }
 });
 
+// =====================================
+// SAVED PROPERTIES (WISHLIST) ENDPOINTS
+// =====================================
+
+// Save a property to user's wishlist
+app.post('/api/saved-properties', async (req: Request, res: Response) => {
+  try {
+    const { userId, propertyId, notes } = req.body;
+
+    if (!userId || !propertyId) {
+      return res.status(400).json({
+        success: false,
+        error: 'userId and propertyId are required'
+      });
+    }
+
+    // Check if already saved
+    const { data: existing } = await supabase
+      .from('saved_properties')
+      .select('*')
+      .eq('user_id', userId)
+      .eq('property_id', propertyId)
+      .single();
+
+    if (existing) {
+      return res.status(409).json({
+        success: false,
+        error: 'Property already saved'
+      });
+    }
+
+    // Save property
+    const { data, error } = await supabase
+      .from('saved_properties')
+      .insert([{
+        user_id: userId,
+        property_id: propertyId,
+        notes: notes || null
+      }])
+      .select(`
+        *,
+        property:properties(*)
+      `)
+      .single();
+
+    if (error) throw error;
+
+    console.log('❤️ [Saved Properties] User', userId, 'saved property', propertyId);
+
+    res.status(201).json({
+      success: true,
+      data,
+      message: 'Property saved successfully'
+    });
+  } catch (error) {
+    console.error('Error saving property:', error);
+    res.status(500).json({
+      success: false,
+      error: error instanceof Error ? error.message : 'Unknown error'
+    });
+  }
+});
+
+// Remove property from user's wishlist
+app.delete('/api/saved-properties/:id', async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+
+    const { error } = await supabase
+      .from('saved_properties')
+      .delete()
+      .eq('id', id);
+
+    if (error) throw error;
+
+    console.log('💔 [Saved Properties] Removed saved property', id);
+
+    res.json({
+      success: true,
+      message: 'Property removed from saved list'
+    });
+  } catch (error) {
+    console.error('Error removing saved property:', error);
+    res.status(500).json({
+      success: false,
+      error: error instanceof Error ? error.message : 'Unknown error'
+    });
+  }
+});
+
+// Remove property from wishlist by user and property ID
+app.delete('/api/saved-properties/user/:userId/property/:propertyId', async (req: Request, res: Response) => {
+  try {
+    const { userId, propertyId } = req.params;
+
+    const { error } = await supabase
+      .from('saved_properties')
+      .delete()
+      .eq('user_id', userId)
+      .eq('property_id', propertyId);
+
+    if (error) throw error;
+
+    console.log('💔 [Saved Properties] User', userId, 'removed property', propertyId);
+
+    res.json({
+      success: true,
+      message: 'Property removed from saved list'
+    });
+  } catch (error) {
+    console.error('Error removing saved property:', error);
+    res.status(500).json({
+      success: false,
+      error: error instanceof Error ? error.message : 'Unknown error'
+    });
+  }
+});
+
+// Get all saved properties for a user
+app.get('/api/saved-properties/user/:userId', async (req: Request, res: Response) => {
+  try {
+    const { userId } = req.params;
+
+    const { data, error } = await supabase
+      .from('saved_properties')
+      .select(`
+        *,
+        property:properties(
+          *,
+          owner:users(id, full_name, email)
+        )
+      `)
+      .eq('user_id', userId)
+      .order('created_at', { ascending: false });
+
+    if (error) throw error;
+
+    console.log('❤️ [Saved Properties] Retrieved', data?.length || 0, 'saved properties for user', userId);
+
+    res.json({
+      success: true,
+      data: data || [],
+      count: data?.length || 0
+    });
+  } catch (error) {
+    console.error('Error fetching saved properties:', error);
+    res.status(500).json({
+      success: false,
+      error: error instanceof Error ? error.message : 'Unknown error'
+    });
+  }
+});
+
+// Check if a property is saved by user
+app.get('/api/saved-properties/check/:userId/:propertyId', async (req: Request, res: Response) => {
+  try {
+    const { userId, propertyId } = req.params;
+
+    const { data, error } = await supabase
+      .from('saved_properties')
+      .select('id')
+      .eq('user_id', userId)
+      .eq('property_id', propertyId)
+      .single();
+
+    if (error && error.code !== 'PGRST116') throw error; // PGRST116 = no rows returned
+
+    res.json({
+      success: true,
+      isSaved: !!data,
+      savedId: data?.id || null
+    });
+  } catch (error) {
+    console.error('Error checking saved property:', error);
+    res.status(500).json({
+      success: false,
+      error: error instanceof Error ? error.message : 'Unknown error'
+    });
+  }
+});
+
 // Cross-chain payment capability using CCTP
 // TODO: Re-implement when needed
 /*
