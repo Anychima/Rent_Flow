@@ -4,6 +4,7 @@ import { Search, MapPin, Home, Bed, Bath, DollarSign, Heart, Filter, User, LogOu
 import axios from 'axios';
 import { useAuth } from '../contexts/AuthContext';
 import PropertyComparisonModal from './PropertyComparisonModal';
+import { PropertyListSkeleton } from './SkeletonLoader';
 
 interface Property {
   id: string;
@@ -674,7 +675,9 @@ const PublicPropertyListings: React.FC = () => {
           </div>
         </div>
 
-        {filteredProperties.length === 0 ? (
+        {loading ? (
+          <PropertyListSkeleton count={6} />
+        ) : filteredProperties.length === 0 ? (
           <div className="text-center py-20">
             <div className="inline-flex items-center justify-center w-20 h-20 bg-gray-100 rounded-full mb-4">
               <Home className="w-10 h-10 text-gray-400" />

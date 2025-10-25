@@ -10,6 +10,8 @@ dotenv.config({ path: path.join(__dirname, '../.env') });
 import { createClient } from '@supabase/supabase-js';
 import { logger } from './services/logger';
 import { validateEnvironment } from './utils/envValidator';
+import { errorHandler, notFoundHandler, asyncHandler, ApiErrors } from './middleware/errorHandler';
+import { validateBody, validateParams, validateQuery } from './middleware/validation';
 import circlePaymentService from './services/circlePaymentService';
 import paymentScheduler from './services/paymentScheduler';
 import openaiService from './services/openaiService';
@@ -150,29 +152,31 @@ app.get('/api/blockchain/wallet/:address/balance', async (req: Request, res: Res
 // ==================== Circle Wallet Endpoints ====================
 
 // Get or create Circle wallet for user
-app.get('/api/circle/wallet/:userId', async (req: Request, res: Response) => {
-  try {
+app.get('/api/circle/wallet/:userId',
+  validateParams({
+    userId: { type: 'uuid', required: true }
+  }),
+  validateQuery({
+    role: { type: 'string', required: true, enum: ['manager', 'tenant'] }
+  }),
+  asyncHandler(async (req: Request, res: Response) => {
     const { userId } = req.params;
     const { role, walletId } = req.query as { role?: 'manager' | 'tenant'; walletId?: string };
-
-    if (!userId || !role) {
-      return res.status(400).json({
-        success: false,
-        error: 'User ID and role are required'
-      });
-    }
 
     logger.info(`Getting wallet for user: ${userId}, role: ${role}`, undefined, 'CIRCLE_API');
 
     // Get wallet info from Circle signing service
-    const result = await circleSigningService.getOrCreateUserWallet(userId, role, walletId);
+    const result = await circleSigningService.getOrCreateUserWallet(userId, role!, walletId);
 
     if (result.error) {
-      return res.status(result.requiresInput ? 200 : 500).json({
-        success: false,
-        error: result.error,
-        requiresInput: result.requiresInput
-      });
+      if (result.requiresInput) {
+        return res.status(200).json({
+          success: false,
+          error: result.error,
+          requiresInput: result.requiresInput
+        });
+      }
+      throw ApiErrors.internal(result.error);
     }
 
     // Save wallet info to database
@@ -201,14 +205,8 @@ app.get('/api/circle/wallet/:userId', async (req: Request, res: Response) => {
         role
       }
     });
-  } catch (error) {
-    logger.error('Error getting wallet', error, 'CIRCLE_API');
-    res.status(500).json({
-      success: false,
-      error: error instanceof Error ? error.message : 'Unknown error'
-    });
-  }
-});
+  })
+);
 
 // Sign message with Circle wallet
 app.post('/api/circle/sign-message', async (req: Request, res: Response) => {
@@ -442,20 +440,20 @@ app.get('/api/properties/:id', async (req: Request, res: Response) => {
 });
 
 // Create new property
-app.post('/api/properties', async (req: Request, res: Response) => {
-  try {
+app.post('/api/properties',
+  validateBody({
+    title: { type: 'string', required: true, min: 3, max: 200 },
+    address: { type: 'string', required: true, min: 5, max: 500 },
+    city: { type: 'string', required: true, min: 2, max: 100 },
+    state: { type: 'string', required: true, min: 2, max: 100 },
+    monthly_rent_usdc: { type: 'number', required: true, min: 0 },
+    security_deposit_usdc: { type: 'number', required: true, min: 0 },
+    bedrooms: { type: 'number', required: true, min: 0 },
+    bathrooms: { type: 'number', required: true, min: 0 },
+    square_feet: { type: 'number', required: true, min: 0 }
+  }),
+  asyncHandler(async (req: Request, res: Response) => {
     const propertyData = req.body;
-    
-    // Validate required fields
-    const required = ['title', 'address', 'city', 'state', 'monthly_rent_usdc', 'security_deposit_usdc'];
-    const missing = required.filter(field => !propertyData[field]);
-    
-    if (missing.length > 0) {
-      return res.status(400).json({
-        success: false,
-        error: `Missing required fields: ${missing.join(', ')}`
-      });
-    }
 
     const { data, error } = await supabase
       .from('properties')
@@ -463,17 +461,11 @@ app.post('/api/properties', async (req: Request, res: Response) => {
       .select()
       .single();
 
-    if (error) throw error;
+    if (error) throw ApiErrors.internal('Failed to create property');
 
     res.status(201).json({ success: true, data });
-  } catch (error) {
-    console.error('Error creating property:', error);
-    res.status(500).json({ 
-      success: false, 
-      error: error instanceof Error ? error.message : 'Unknown error' 
-    });
-  }
-});
+  })
+);
 
 // Update property
 app.put('/api/properties/:id', async (req: Request, res: Response) => {
@@ -5131,6 +5123,12 @@ app.post('/api/leases/:leaseId/migrate-chat', async (req: Request, res: Response
     });
   }
 });
+
+// 404 handler for undefined routes (must be after all valid routes)
+app.use(notFoundHandler);
+
+// Global error handler (must be last)
+app.use(errorHandler);
 
 // Start server
 app.listen(PORT, () => {
