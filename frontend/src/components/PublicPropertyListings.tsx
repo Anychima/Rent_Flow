@@ -439,6 +439,13 @@ const PublicPropertyListings: React.FC = () => {
                       <span className="text-sm font-medium text-gray-700">{userProfile.email}</span>
                     </div>
                     <button
+                      onClick={() => navigate('/saved-properties')}
+                      className="flex items-center space-x-2 px-5 py-2.5 text-gray-700 hover:text-gray-900 font-semibold border border-gray-300 rounded-lg hover:border-gray-400 transition-all duration-200"
+                    >
+                      <Heart className="w-4 h-4" />
+                      <span>Saved ({savedPropertyIds.size})</span>
+                    </button>
+                    <button
                       onClick={() => navigate('/my-applications')}
                       className="flex items-center space-x-2 px-5 py-2.5 text-gray-700 hover:text-gray-900 font-semibold border border-gray-300 rounded-lg hover:border-gray-400 transition-all duration-200"
                     >
@@ -505,68 +512,150 @@ const PublicPropertyListings: React.FC = () => {
             </button>
           </div>
 
-          {/* Filter Panel */}
+          {/* Enhanced Filter Panel */}
           {showFilters && (
-            <div className="mt-6 p-6 bg-gradient-to-br from-blue-50 to-indigo-50 rounded-xl border-2 border-blue-100 grid grid-cols-1 md:grid-cols-4 gap-6 animate-fadeIn">
+            <div className="mt-6 p-6 bg-gradient-to-br from-blue-50 to-indigo-50 rounded-xl border-2 border-blue-100 animate-fadeIn space-y-6">
+              {/* Property Types - Multi-select */}
+              <div>
+                <label className="block text-sm font-semibold text-gray-700 mb-3">
+                  🏠 Property Type (select multiple)
+                </label>
+                <div className="flex flex-wrap gap-2">
+                  {['apartment', 'house', 'condo', 'studio'].map((type) => (
+                    <button
+                      key={type}
+                      onClick={() => togglePropertyType(type)}
+                      className={`px-4 py-2 rounded-lg font-medium transition-all ${
+                        filterType.includes(type)
+                          ? 'bg-blue-600 text-white shadow-md'
+                          : 'bg-white text-gray-700 border-2 border-gray-200 hover:border-blue-500'
+                      }`}
+                    >
+                      {type.charAt(0).toUpperCase() + type.slice(1)}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Price Range Slider */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-2">
+                    💰 Min Rent (USDC)
+                  </label>
+                  <input
+                    type="number"
+                    className="w-full px-4 py-2.5 border-2 border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white"
+                    value={priceRange.min}
+                    onChange={(e) => setPriceRange(prev => ({ ...prev, min: Number(e.target.value) }))}
+                    min="0"
+                    step="100"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-2">
+                    💰 Max Rent (USDC)
+                  </label>
+                  <input
+                    type="number"
+                    className="w-full px-4 py-2.5 border-2 border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white"
+                    value={priceRange.max}
+                    onChange={(e) => setPriceRange(prev => ({ ...prev, max: Number(e.target.value) }))}
+                    min="0"
+                    step="100"
+                  />
+                </div>
+              </div>
+
+              {/* Bedrooms & Bathrooms */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-2">
+                    🛏️ Min Bedrooms
+                  </label>
+                  <select
+                    className="w-full px-4 py-2.5 border-2 border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 bg-white"
+                    value={minBedrooms}
+                    onChange={(e) => setMinBedrooms(Number(e.target.value))}
+                  >
+                    <option value="0">Any</option>
+                    <option value="1">1+</option>
+                    <option value="2">2+</option>
+                    <option value="3">3+</option>
+                    <option value="4">4+</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-2">
+                    🛿 Min Bathrooms
+                  </label>
+                  <select
+                    className="w-full px-4 py-2.5 border-2 border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 bg-white"
+                    value={minBathrooms}
+                    onChange={(e) => setMinBathrooms(Number(e.target.value))}
+                  >
+                    <option value="0">Any</option>
+                    <option value="1">1+</option>
+                    <option value="2">2+</option>
+                    <option value="3">3+</option>
+                  </select>
+                </div>
+              </div>
+
+              {/* Amenities - Multi-select */}
+              <div>
+                <label className="block text-sm font-semibold text-gray-700 mb-3">
+                  ✨ Amenities
+                </label>
+                <div className="flex flex-wrap gap-2">
+                  {availableAmenities.map((amenity) => (
+                    <button
+                      key={amenity}
+                      onClick={() => toggleAmenity(amenity)}
+                      className={`px-3 py-1.5 rounded-full text-sm font-medium transition-all ${
+                        selectedAmenities.includes(amenity)
+                          ? 'bg-green-600 text-white shadow-md'
+                          : 'bg-white text-gray-700 border border-gray-200 hover:border-green-500'
+                      }`}
+                    >
+                      {amenity.replace(/_/g, ' ')}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Sort By */}
               <div>
                 <label className="block text-sm font-semibold text-gray-700 mb-2">
-                  🏠 Property Type
+                  🔄 Sort By
                 </label>
                 <select
-                  className="w-full px-4 py-2.5 border-2 border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white transition-all duration-200"
-                  value={filterType}
-                  onChange={(e) => setFilterType(e.target.value)}
+                  className="w-full px-4 py-2.5 border-2 border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 bg-white"
+                  value={sortBy}
+                  onChange={(e) => setSortBy(e.target.value as any)}
                 >
-                  <option value="all">All Types</option>
-                  <option value="apartment">Apartment</option>
-                  <option value="house">House</option>
-                  <option value="condo">Condo</option>
-                  <option value="studio">Studio</option>
+                  <option value="newest">Newest First</option>
+                  <option value="price_asc">Price: Low to High</option>
+                  <option value="price_desc">Price: High to Low</option>
+                  <option value="popular">Most Popular</option>
                 </select>
               </div>
 
-              <div>
-                <label className="block text-sm font-semibold text-gray-700 mb-2">
-                  💰 Max Rent (USDC)
-                </label>
-                <input
-                  type="number"
-                  className="w-full px-4 py-2.5 border-2 border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white transition-all duration-200"
-                  value={maxRent}
-                  onChange={(e) => setMaxRent(Number(e.target.value))}
-                  min="0"
-                  step="100"
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-semibold text-gray-700 mb-2">
-                  🛏️ Min Bedrooms
-                </label>
-                <select
-                  className="w-full px-4 py-2.5 border-2 border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white transition-all duration-200"
-                  value={minBedrooms}
-                  onChange={(e) => setMinBedrooms(Number(e.target.value))}
-                >
-                  <option value="0">Any</option>
-                  <option value="1">1+</option>
-                  <option value="2">2+</option>
-                  <option value="3">3+</option>
-                  <option value="4">4+</option>
-                </select>
-              </div>
-
-              <div className="flex items-end">
+              {/* Clear Filters Button */}
+              <div className="flex justify-end">
                 <button
                   onClick={() => {
                     setSearchTerm('');
-                    setFilterType('all');
-                    setMaxRent(10000);
+                    setFilterType([]);
+                    setPriceRange({ min: 0, max: 10000 });
                     setMinBedrooms(0);
+                    setMinBathrooms(0);
+                    setSelectedAmenities([]);
+                    setSortBy('newest');
                   }}
-                  className="w-full px-4 py-2.5 bg-white border-2 border-gray-200 text-gray-700 rounded-lg hover:bg-gray-50 hover:border-gray-300 font-semibold transition-all duration-200"
+                  className="px-6 py-2.5 bg-white border-2 border-gray-200 text-gray-700 rounded-lg hover:bg-gray-50 hover:border-gray-300 font-semibold transition-all duration-200"
                 >
-                  ↻ Clear Filters
+                  ↻ Clear All Filters
                 </button>
               </div>
             </div>
@@ -595,9 +684,12 @@ const PublicPropertyListings: React.FC = () => {
             <button
               onClick={() => {
                 setSearchTerm('');
-                setFilterType('all');
-                setMaxRent(10000);
+                setFilterType([]);
+                setPriceRange({ min: 0, max: 10000 });
                 setMinBedrooms(0);
+                setMinBathrooms(0);
+                setSelectedAmenities([]);
+                setSortBy('newest');
               }}
               className="px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-semibold transition-colors"
             >
@@ -641,6 +733,30 @@ const PublicPropertyListings: React.FC = () => {
           </p>
         </div>
       </div>
+
+      {/* Floating Compare Button */}
+      {compareList.length > 0 && (
+        <div className="fixed bottom-8 right-8 z-40">
+          <button
+            onClick={() => setShowComparison(true)}
+            className="bg-gradient-to-r from-purple-600 to-pink-600 text-white px-6 py-4 rounded-full shadow-2xl hover:shadow-3xl transition-all transform hover:scale-105 flex items-center gap-3 font-bold"
+          >
+            <BarChart2 className="w-5 h-5" />
+            Compare ({compareList.length})
+          </button>
+        </div>
+      )}
+
+      {/* Property Comparison Modal */}
+      {showComparison && (
+        <PropertyComparisonModal
+          properties={compareList}
+          onClose={() => setShowComparison(false)}
+          onRemove={(propertyId) => {
+            setCompareList(compareList.filter(p => p.id !== propertyId));
+          }}
+        />
+      )}
     </div>
   );
 };

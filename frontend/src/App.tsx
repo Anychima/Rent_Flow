@@ -19,6 +19,7 @@ import LeaseSigningPage from './pages/LeaseSigningPage';
 import LeaseReviewPage from './pages/LeaseReviewPage';
 import ApplicationReviewModal from './components/ApplicationReviewModal';
 import ChatBox from './components/ChatBox';
+import SavedPropertiesPage from './pages/SavedPropertiesPage';
 
 interface Toast {
   id: number;
@@ -1920,6 +1921,7 @@ export default function AppWrapper() {
         <Route path="/property/:id" element={<PropertyDetail />} />
         <Route path="/apply/:id" element={<PropertyApplicationForm />} />
         <Route path="/my-applications" element={<MyApplications />} />
+        <Route path="/saved-properties" element={<SavedPropertiesPage />} />
         <Route path="/lease/sign/:id" element={<LeaseSigningPage />} />
         <Route path="/lease/review/:id" element={<LeaseReviewPage />} />
         <Route path="/login" element={<AuthWall mode="login" />} />
