@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import MicroPaymentForm from './MicroPaymentForm';
 import MicropaymentHistory from './MicropaymentHistory';
-import { DashboardStatsSkeleton, TableSkeleton, FormSkeleton } from './SkeletonLoader';
+import { DashboardStatsSkeleton, TableSkeleton } from './SkeletonLoader';
 
 const API_URL = process.env.REACT_APP_BACKEND_URL || 'http://localhost:3001';
 
