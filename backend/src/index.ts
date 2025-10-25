@@ -79,12 +79,21 @@ app.get('/api/blockchain/info', (_req: Request, res: Response) => {
       data: {
         network: networkInfo.network,
         rpcUrl: networkInfo.rpcUrl,
+        programId: networkInfo.programId || 'Not deployed yet',
         isConfigured: networkInfo.isConfigured,
+        canWrite: networkInfo.canWrite,
         circlePaymentsEnabled: circlePaymentService.isReady(),
         features: {
           onChainLeaseStorage: solanaLeaseService.isReady(),
           onChainPayments: circlePaymentService.isReady(),
           signatureVerification: solanaLeaseService.isReady(),
+          customAnchorProgram: !!networkInfo.programId,
+        },
+        deployment: {
+          status: networkInfo.programId ? 'deployed' : 'pending',
+          explorer: networkInfo.programId 
+            ? `https://explorer.solana.com/address/${networkInfo.programId}?cluster=${networkInfo.network}`
+            : null,
         }
       }
     });

@@ -95,11 +95,13 @@ class SolanaLeaseService {
   /**
    * Get network info
    */
-  getNetworkInfo(): { network: string; rpcUrl: string; canWrite: boolean } {
+  getNetworkInfo(): { network: string; rpcUrl: string; canWrite: boolean; isConfigured: boolean; programId?: string } {
     return {
       network: this.network,
       rpcUrl: process.env.SOLANA_RPC_URL || 'https://api.devnet.solana.com',
       canWrite: !!this.programKeypair,
+      isConfigured: this.isConfigured,
+      programId: process.env.SOLANA_PROGRAM_ID || undefined,
     };
   }
 
