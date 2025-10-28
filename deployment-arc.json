@@ -1,0 +1,14 @@
+{
+  "network": "arc-testnet",
+  "chainId": 5042002,
+  "deployer": "0x4e076D7ce8F401858E3026BC567478C6611d741a",
+  "timestamp": "2025-10-28T14:43:59.709Z",
+  "contracts": {
+    "RentFlowLeaseSignature": "0x1B831B4a95216ea98668BCEFf2662FEF2E833Da3"
+  },
+  "blockExplorer": "https://testnet.arcscan.app/address/0x1B831B4a95216ea98668BCEFf2662FEF2E833Da3",
+  "transaction": {
+    "hash": "0x6a487eb6a213ce0635a815acc52fd611124694d823459b7ddf7efe8cc00dd894",
+    "blockNumber": null
+  }
+}

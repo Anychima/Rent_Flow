@@ -15,12 +15,10 @@
   },
   "dependencies": {
     "@circle-fin/developer-controlled-wallets": "^9.1.0",
-    "@coral-xyz/anchor": "^0.29.0",
-    "@project-serum/anchor": "^0.26.0",
-    "@solana/web3.js": "^1.87.6",
     "@supabase/supabase-js": "^2.39.0",
     "axios": "^1.6.3",
     "bcryptjs": "^2.4.3",
+    "clipboardy": "^5.0.0",
     "cors": "^2.8.5",
     "dotenv": "^16.3.1",
     "ethers": "^6.9.0",
@@ -28,6 +26,7 @@
     "express-validator": "^7.0.1",
     "jsonwebtoken": "^9.0.2",
     "openai": "^4.104.0",
+    "pg": "^8.16.3",
     "ws": "^8.16.0"
   },
   "devDependencies": {

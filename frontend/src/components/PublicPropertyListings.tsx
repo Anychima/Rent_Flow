@@ -732,7 +732,7 @@ const PublicPropertyListings: React.FC = () => {
             </button>
           </div>
           <p className="mt-6 text-sm text-blue-100">
-            ✨ Powered by Solana & Circle USDC | Secure, Fast, Transparent
+            ✨ Powered by Arc & Circle USDC | Secure, Fast, Transparent
           </p>
         </div>
       </div>

@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { useAuth } from '../contexts/AuthContext';
+import { useNavigate } from 'react-router-dom';
 
 interface LoginProps {
   onToggleMode: () => void;
@@ -11,6 +12,7 @@ export default function Login({ onToggleMode }: LoginProps) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const { signIn } = useAuth();
+  const navigate = useNavigate();
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -21,10 +23,14 @@ export default function Login({ onToggleMode }: LoginProps) {
       const { error } = await signIn(email, password);
       if (error) {
         setError(error.message);
+        setLoading(false);
+      } else {
+        // Success! Navigate to home page for role-based routing
+        console.log('✅ [Login] Sign-in successful, redirecting to home...');
+        navigate('/');
       }
     } catch (err) {
       setError('An unexpected error occurred');
-    } finally {
       setLoading(false);
     }
   };

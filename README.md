@@ -1,16 +1,15 @@
 # 🏠 RentFlow AI
 
-> AI-Powered Property Management System on Arc with USDC Payments
+> AI-Powered Property Management System on Arc Testnet with USDC Payments
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Solidity](https://img.shields.io/badge/Solidity-0.8.20-blue)](https://soliditylang.org/)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.3-blue)](https://www.typescriptlang.org/)
 [![React](https://img.shields.io/badge/React-18.0-61dafb)](https://reactjs.org/)
 [![Node.js](https://img.shields.io/badge/Node.js-18+-green)](https://nodejs.org/)
+[![Arc Testnet](https://img.shields.io/badge/Arc-Testnet-purple)](https://arc.network/)
 
-**Built for the AI Agents on Arc with USDC Hackathon**
-
-RentFlow AI is a comprehensive blockchain-based property management platform that leverages AI agents, smart contracts, and USDC payments to automate and streamline rental property operations on the Arc blockchain.
+RentFlow AI is a comprehensive blockchain-based property management platform that leverages AI agents, smart contracts on Arc Testnet, and USDC payments to automate and streamline rental property operations.
 
 ---
 

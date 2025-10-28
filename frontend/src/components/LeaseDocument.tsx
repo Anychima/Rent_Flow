@@ -302,7 +302,7 @@ const LeaseDocument: React.FC<LeaseDocumentProps> = ({ lease }) => {
             Lease ID: <span className="font-mono text-xs">{lease.id}</span>
           </p>
           <p className="mt-4 text-xs">
-            This is a legally binding digital lease agreement secured on the Solana blockchain.
+            This is a legally binding digital lease agreement secured on the Arc blockchain.
           </p>
         </div>
       </div>

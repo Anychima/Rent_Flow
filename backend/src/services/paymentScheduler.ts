@@ -145,7 +145,7 @@ class PaymentScheduler {
         due_date: targetDate.toISOString().split('T')[0],
         status: 'pending',
         payment_date: targetDate.toISOString(),
-        blockchain_network: 'solana',
+        blockchain_network: 'arc-testnet',
         notes: `Auto-generated monthly rent payment`,
       });
 

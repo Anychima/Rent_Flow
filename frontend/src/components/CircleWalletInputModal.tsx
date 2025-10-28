@@ -68,7 +68,7 @@ const CircleWalletInputModal: React.FC<CircleWalletInputModalProps> = ({
           <ol className="list-decimal list-inside text-sm text-blue-800 space-y-2">
             <li>Go to <a href="https://console.circle.com" target="_blank" rel="noopener noreferrer" className="underline font-medium">Circle Console</a></li>
             <li>Navigate to "Wallets" → "Developer Controlled Wallets"</li>
-            <li>Select or create a Solana Devnet wallet</li>
+            <li>Select or create an Arc Testnet wallet</li>
             <li>Copy the Wallet ID (UUID format)</li>
             <li>Paste it below</li>
           </ol>
@@ -145,7 +145,7 @@ const CircleWalletInputModal: React.FC<CircleWalletInputModalProps> = ({
               <ol className="list-decimal list-inside space-y-1 ml-2">
                 <li>Sign up at <a href="https://console.circle.com" target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">console.circle.com</a></li>
                 <li>Complete KYC verification</li>
-                <li>Create a Wallet Set for Solana Devnet</li>
+                <li>Create a Wallet Set for Arc Testnet</li>
                 <li>Generate a new Developer Controlled Wallet</li>
                 <li>Copy the Wallet ID and paste it here</li>
               </ol>

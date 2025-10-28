@@ -63,9 +63,9 @@ export default function MicropaymentHistory({ userId }: MicropaymentHistoryProps
       return null; // Simulated transaction, no real blockchain link
     }
     
-    // For Solana Devnet
-    if (network === 'solana') {
-      return `https://solscan.io/tx/${transactionHash}?cluster=devnet`;
+    // For Arc Testnet
+    if (network === 'arc') {
+      return `https://testnet.arcscan.app/tx/${transactionHash}`;
     }
     
     return null;
@@ -333,7 +333,7 @@ export default function MicropaymentHistory({ userId }: MicropaymentHistoryProps
               <p className="font-medium mb-1">About Micropayments</p>
               <p>
                 Micropayments are small USDC transfers (up to $10) processed on the {' '}
-                {micropayments[0]?.blockchain_network === 'solana' ? 'Solana Devnet' : 'blockchain'}.
+                {micropayments[0]?.blockchain_network === 'arc' ? 'Arc Testnet' : 'blockchain'}.
                 {' '}Transactions marked as "SIMULATED" are created in development mode. 
                 Configure Circle API keys for real blockchain transactions.
               </p>

@@ -1,11 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
+import { useWallet } from '../contexts/WalletContext';
 import LeaseDocument from '../components/LeaseDocument';
-import CircleWalletInputModal from '../components/CircleWalletInputModal';
+import WalletConnectionModal from '../components/WalletConnectionModal';
 import { CheckCircle, AlertCircle, Loader, Edit, Send, Wallet, FileSignature } from 'lucide-react';
 import axios from 'axios';
-import dualWalletService, { WalletType } from '../services/dualWalletService';
 
 interface Lease {
   id: string;
@@ -35,6 +35,7 @@ const LeaseReviewPage: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const { user, userProfile } = useAuth();
+  const { walletAddress, walletId, walletType, isConnected, connectWallet } = useWallet();
 
   const [lease, setLease] = useState<Lease | null>(null);
   const [loading, setLoading] = useState(true);
@@ -42,12 +43,7 @@ const LeaseReviewPage: React.FC = () => {
   const [saving, setSaving] = useState(false);
   const [sending, setSending] = useState(false);
   const [signing, setSigning] = useState(false);
-  const [walletType, setWalletType] = useState<WalletType>('phantom');
-  const [phantomConnected, setPhantomConnected] = useState(false);
-  const [phantomAddress, setPhantomAddress] = useState<string>('');
-  const [circleWalletId, setCircleWalletId] = useState<string>('');
-  const [circleWalletConnected, setCircleWalletConnected] = useState(false);
-  const [showCircleWalletModal, setShowCircleWalletModal] = useState(false);
+  const [showWalletModal, setShowWalletModal] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
 
@@ -71,85 +67,52 @@ const LeaseReviewPage: React.FC = () => {
       return;
     }
 
-    fetchLease();
-    // Don't auto-connect, let user choose wallet type
-  }, [id, user, userProfile]);
-
-  const connectPhantomWallet = async () => {
-    try {
-      console.log('🔗 [Phantom] Connecting Phantom wallet for manager...');
-      const result = await dualWalletService.connectPhantomWallet();
-      
-      if (result.success && result.publicKey) {
-        setPhantomAddress(result.publicKey);
-        setPhantomConnected(true);
-        setWalletType('phantom');
-        console.log('✅ [Phantom] Wallet connected:', result.publicKey);
-      } else {
-        setError(result.error || 'Failed to connect Phantom wallet');
-      }
-    } catch (err) {
-      console.error('Error connecting Phantom wallet:', err);
-      setError('Failed to connect Phantom wallet');
-    }
-  };
-
-  const connectCircleWallet = async (providedWalletId?: string) => {
-    if (!userProfile?.id) return;
-
-    try {
-      console.log('🔗 [Circle] Connecting Circle wallet for manager...');
-      
-      // Check if user already has a Circle wallet ID in their profile
-      // This would have been provided during signup
-      const existingWalletId = userProfile.circle_wallet_id;
-      
-      if (existingWalletId && !providedWalletId) {
-        console.log('✅ [Circle] User already has wallet from signup:', existingWalletId);
-        providedWalletId = existingWalletId;
-      }
-      
-      const result = await dualWalletService.connectCircleWallet(
-        userProfile.id, 
-        'manager',
-        providedWalletId
+    // Auto-load wallet from user profile if not already connected
+    if (!isConnected && userProfile?.wallet_address) {
+      console.log('🔄 [Auto-Load] Loading wallet from user profile...');
+      connectWallet(
+        userProfile.wallet_address,
+        userProfile.circle_wallet_id || '',
+        userProfile.circle_wallet_id ? 'circle' : 'external'
       );
-      
-      if (result.success && result.walletId) {
-        setCircleWalletId(result.walletId);
-        setCircleWalletConnected(true);
-        setWalletType('circle');
-        setShowCircleWalletModal(false);
-        setSuccess('Circle wallet connected successfully!');
-        setTimeout(() => setSuccess(''), 3000);
-        console.log('✅ [Circle] Wallet connected:', result.walletId);
-      } else if (result.error === 'REQUIRES_WALLET_ID') {
-        // Only show modal if user doesn't have wallet from signup
-        console.log('⚠️ [Circle] Wallet ID required - showing input modal');
-        setShowCircleWalletModal(true);
-      } else {
-        setError(result.error || 'Failed to connect Circle wallet');
-      }
-    } catch (err) {
-      console.error('Error connecting Circle wallet:', err);
-      setError('Failed to connect Circle wallet');
     }
+
+    fetchLease();
+  }, [id, user, userProfile, isConnected]);
+
+  const connectArcWallet = async () => {
+    // Show wallet connection modal instead of auto-connecting
+    setShowWalletModal(true);
   };
 
-  const handleCircleWalletSubmit = async (walletId: string) => {
-    await connectCircleWallet(walletId);
+  const handleWalletConnected = async (wId: string, wAddress: string) => {
+    // Determine wallet type based on whether walletId is provided
+    const wType: 'circle' | 'external' = wId ? 'circle' : 'external';
+    
+    // Use global wallet context
+    connectWallet(wAddress, wId, wType);
+    
+    // Show appropriate message based on wallet type
+    if (wType === 'circle') {
+      setSuccess(`Circle wallet connected! Address: ${wAddress.substring(0, 8)}...${wAddress.substring(wAddress.length - 6)}`);
+    } else {
+      setSuccess(`External wallet connected! Address: ${wAddress.substring(0, 8)}...${wAddress.substring(wAddress.length - 6)}\n✅ You can now sign leases with this wallet!`);
+    }
+    setTimeout(() => setSuccess(''), 5000);
   };
 
   const signLeaseAsManager = async () => {
     if (!lease) return;
 
-    // Check if appropriate wallet is connected
-    if (walletType === 'phantom' && !phantomConnected) {
-      setError('Please connect Phantom wallet first');
+    // Check if Arc wallet is connected
+    if (!isConnected) {
+      setError('Please connect Arc wallet first');
       return;
     }
-    if (walletType === 'circle' && !circleWalletConnected) {
-      setError('Please connect Circle wallet first');
+    
+    // Validate we have a wallet address
+    if (!walletAddress) {
+      setError('Wallet address is required for signing. Please reconnect your wallet.');
       return;
     }
 
@@ -157,68 +120,79 @@ const LeaseReviewPage: React.FC = () => {
       setSigning(true);
       setError('');
 
-      // Create message to sign with timestamp and role to make it unique
-      const timestamp = Date.now();
-      const message = `LANDLORD SIGNATURE - I, as the property manager, approve and sign this lease agreement ${lease.id} for property starting ${lease.start_date}. Timestamp: ${timestamp}`;
+      console.log('📝 [Smart Contract Signing] Initiating on-chain signature...');
+      console.log('   Wallet Type:', walletType);
+      console.log('   Address:', walletAddress);
+      console.log('   Lease ID:', lease.id);
 
-      console.log(`🔐 [${walletType.toUpperCase()} Sign] Requesting signature...`);
-      console.log('   Message:', message);
+      // Import the smart contract signing service
+      const smartContractSigningService = await import('../services/smartContractSigningService');
+      
+      // Prepare lease info for smart contract
+      const leaseInfo = {
+        leaseId: lease.id,
+        landlord: walletAddress, // Manager is the landlord
+        tenant: lease.tenant?.wallet_address || '0x0000000000000000000000000000000000000000',
+        leaseDocumentHash: `lease-${lease.id}`, // Use lease ID as document hash
+        monthlyRent: lease.monthly_rent_usdc,
+        securityDeposit: lease.security_deposit_usdc,
+        isLandlord: true
+      };
 
-      // Sign with selected wallet type
-      const result = await dualWalletService.signMessage(
-        walletType,
-        message,
-        walletType === 'circle' ? circleWalletId : undefined
+      // Sign lease on smart contract (works for both Circle and external wallets)
+      const result = await smartContractSigningService.signLeaseOnChain(
+        {
+          address: walletAddress,
+          walletType: walletType,
+          circleWalletId: walletId || undefined
+        },
+        leaseInfo
       );
 
       if (!result.success) {
-        setError(result.error || 'Failed to sign lease');
+        const errorMessage = typeof result.error === 'string' 
+          ? result.error 
+          : (result.error as any)?.message || 'Failed to sign lease on-chain';
+        setError(errorMessage);
         setSigning(false);
         return;
       }
 
-      const signatureBase64 = result.signature!;
+      console.log('✅ [Smart Contract] Transaction confirmed:', result.transactionHash);
+      console.log('   Explorer:', `https://testnet.arcscan.app/tx/${result.transactionHash}`);
 
-      console.log(`✅ [${walletType.toUpperCase()} Sign] Signature obtained:`, signatureBase64.substring(0, 40) + '...');
-      console.log('   Signing lease ID:', lease.id);
-
-      // Get wallet address for payment routing
-      const walletAddress = walletType === 'phantom' 
-        ? phantomAddress 
-        : (result.publicKey || circleWalletId);
-
-      console.log('💰 [Wallet Info] Submitting with wallet:', {
-        address: walletAddress,
-        type: walletType,
-        walletId: walletType === 'circle' ? circleWalletId : undefined
-      });
-
-      // Submit signature to backend WITH wallet info for payment routing
+      // Update lease in database with transaction hash
       const response = await axios.post(`http://localhost:3001/api/leases/${lease.id}/sign`, {
-        signer_id: userProfile?.id,
-        signature: signatureBase64,
+        signer_id: userProfile!.id,
+        signature: result.transactionHash, // Store tx hash instead of signature
         signer_type: 'landlord',
-        wallet_address: walletAddress,       // For payment routing
-        wallet_type: walletType,             // 'phantom' or 'circle'
-        wallet_id: walletType === 'circle' ? circleWalletId : undefined
+        wallet_address: walletAddress,
+        wallet_type: walletType,
+        wallet_id: walletId || null,
+        blockchain_tx_hash: result.transactionHash
       });
 
       if (response.data.success) {
-        const wasActivated = response.data.activated;
         setSuccess(
-          wasActivated
-            ? `Lease signed and activated with ${walletType === 'phantom' ? 'Phantom' : 'Circle'} wallet! Tenant has been notified and promoted to tenant role.`
-            : `Lease signed successfully with ${walletType === 'phantom' ? 'Phantom' : 'Circle'} wallet! Tenant will be notified.`
+          response.data.data.lease_status === 'fully_signed'
+            ? `✅ Lease signed on-chain! Transaction: ${result.transactionHash?.substring(0, 10)}...`
+            : `✅ Lease signed successfully! Waiting for tenant signature.`
         );
+
         setLease(response.data.data);
         setTimeout(() => {
           setSuccess('');
           fetchLease(); // Refresh to show updated status
         }, 3000);
       }
-    } catch (err: any) {
-      console.error(`❌ [${walletType.toUpperCase()} Sign] Error:`, err);
-      setError(err.response?.data?.error || err.message || 'Failed to sign lease. Please try again.');
+    } catch (err) {
+      console.error('❌ [Smart Contract] Error:', err);
+      const errorMessage = err instanceof Error 
+        ? err.message 
+        : typeof err === 'string' 
+        ? err 
+        : 'Failed to sign lease. Please try again.';
+      setError(errorMessage);
     } finally {
       setSigning(false);
     }
@@ -461,82 +435,58 @@ const LeaseReviewPage: React.FC = () => {
               )}
               {!lease.landlord_signature && !editing && (
                 <>
-                  {/* Wallet Selection and Connection */}
-                  {!phantomConnected && !circleWalletConnected && (
-                    <div className="flex flex-col gap-3">
-                      <p className="text-sm text-gray-600 font-medium">Choose wallet to sign:</p>
-                      <div className="flex gap-2">
+                  {/* Wallet Connection Section */}
+                  <div className="bg-white rounded-lg p-6 shadow-sm border-2 border-gray-200">
+                    <h3 className="text-lg font-semibold text-gray-900 mb-4">Choose wallet to sign:</h3>
+                    
+                    {!isConnected && (
+                      <div className="space-y-3">
                         <button
-                          onClick={connectPhantomWallet}
-                          className="flex items-center gap-2 px-6 py-3 bg-gradient-to-r from-purple-600 to-pink-600 text-white rounded-lg hover:from-purple-700 hover:to-pink-700 transition-all font-medium shadow-lg"
+                          onClick={connectArcWallet}
+                          className="w-full flex items-center justify-center gap-3 px-6 py-4 bg-blue-600 text-white rounded-xl hover:bg-blue-700 transition-all shadow-md hover:shadow-lg"
                         >
-                          <Wallet className="w-4 h-4" />
-                          Connect Phantom Wallet
-                        </button>
-                        <button
-                          onClick={() => connectCircleWallet()}
-                          className="flex items-center gap-2 px-6 py-3 bg-gradient-to-r from-blue-600 to-purple-600 text-white rounded-lg hover:from-blue-700 hover:to-purple-700 transition-all font-medium shadow-lg"
-                        >
-                          <Wallet className="w-4 h-4" />
-                          Connect Circle Wallet
+                          <Wallet className="w-5 h-5" />
+                          <span className="font-medium">Connect Arc Wallet</span>
                         </button>
                       </div>
-                    </div>
-                  )}
+                    )}
 
-                  {/* Phantom Wallet Connected */}
-                  {phantomConnected && (
-                    <div className="flex flex-col gap-2">
-                      <div className="px-4 py-2 bg-purple-50 border-2 border-purple-200 rounded-lg">
-                        <p className="text-xs text-purple-600 font-medium">Phantom Wallet Connected</p>
-                        <p className="text-sm font-mono text-purple-900">{phantomAddress.substring(0, 8)}...{phantomAddress.substring(phantomAddress.length - 6)}</p>
+                    {/* Arc Wallet Connected */}
+                    {isConnected && (
+                      <div className="bg-gradient-to-br from-blue-50 to-indigo-50 border-2 border-blue-300 rounded-xl p-5 space-y-3">
+                        <div className="flex items-center gap-3">
+                          <div className="w-12 h-12 bg-blue-100 rounded-full flex items-center justify-center">
+                            <Wallet className="w-6 h-6 text-blue-600" />
+                          </div>
+                          <div className="flex-1">
+                            <p className="text-sm font-semibold text-blue-900">Arc Wallet Connected</p>
+                            <p className="text-sm font-mono text-blue-900">{walletAddress.substring(0, 8)}...{walletAddress.substring(walletAddress.length - 6)}</p>
+                            <p className="text-xs text-green-600 mt-1 font-medium">✅ Ready to sign lease on-chain</p>
+                          </div>
+                          <CheckCircle className="w-6 h-6 text-green-600" />
+                        </div>
                       </div>
-                      <button
-                        onClick={signLeaseAsManager}
-                        disabled={signing}
-                        className="flex items-center gap-2 px-6 py-3 bg-gradient-to-r from-purple-600 to-pink-600 text-white rounded-lg hover:from-purple-700 hover:to-pink-700 transition-all font-medium shadow-lg disabled:opacity-50"
-                      >
-                        {signing ? (
-                          <>
-                            <Loader className="w-4 h-4 animate-spin" />
-                            Signing...
-                          </>
-                        ) : (
-                          <>
-                            <FileSignature className="w-4 h-4" />
-                            Sign with Phantom
-                          </>
-                        )}
-                      </button>
-                    </div>
-                  )}
+                    )}
 
-                  {/* Circle Wallet Connected */}
-                  {circleWalletConnected && (
-                    <div className="flex flex-col gap-2">
-                      <div className="px-4 py-2 bg-blue-50 border-2 border-blue-200 rounded-lg">
-                        <p className="text-xs text-blue-600 font-medium">Circle Wallet Connected</p>
-                        <p className="text-sm font-mono text-blue-900">{circleWalletId.substring(0, 20)}...{circleWalletId.substring(circleWalletId.length - 10)}</p>
-                      </div>
-                      <button
-                        onClick={signLeaseAsManager}
-                        disabled={signing}
-                        className="flex items-center gap-2 px-6 py-3 bg-gradient-to-r from-blue-600 to-purple-600 text-white rounded-lg hover:from-blue-700 hover:to-purple-700 transition-all font-medium shadow-lg disabled:opacity-50"
-                      >
-                        {signing ? (
-                          <>
-                            <Loader className="w-4 h-4 animate-spin" />
-                            Signing...
-                          </>
-                        ) : (
-                          <>
-                            <FileSignature className="w-4 h-4" />
-                            Sign with Circle
-                          </>
-                        )}
-                      </button>
-                    </div>
-                  )}
+                    {/* Sign Lease Button */}
+                    <button
+                      onClick={signLeaseAsManager}
+                      disabled={signing}
+                      className="w-full flex items-center justify-center gap-3 px-6 py-4 bg-blue-700 text-white rounded-xl hover:bg-blue-800 transition-all shadow-md hover:shadow-lg disabled:bg-gray-300 disabled:text-gray-500 disabled:cursor-not-allowed"
+                    >
+                      {signing ? (
+                        <>
+                          <Loader className="w-4 h-4 animate-spin" />
+                          Signing...
+                        </>
+                      ) : (
+                        <>
+                          <FileSignature className="w-4 h-4" />
+                          Sign Lease
+                        </>
+                      )}
+                    </button>
+                  </div>
 
                   {/* Send to Tenant Button - Show when NOT signed OR when signed but not sent */}
                   {(!lease.landlord_signature || (lease.landlord_signature && lease.lease_status === 'draft')) && (
@@ -689,12 +639,15 @@ const LeaseReviewPage: React.FC = () => {
         <LeaseDocument lease={lease} />
       </div>
 
-      {/* Circle Wallet Input Modal */}
-      <CircleWalletInputModal
-        isOpen={showCircleWalletModal}
-        onClose={() => setShowCircleWalletModal(false)}
-        onSubmit={handleCircleWalletSubmit}
-      />
+      {/* Wallet Connection Modal */}
+      {showWalletModal && userProfile && (
+        <WalletConnectionModal
+          userId={userProfile.id}
+          userEmail={userProfile.email || ''}
+          onClose={() => setShowWalletModal(false)}
+          onWalletConnected={handleWalletConnected}
+        />
+      )}
     </div>
   );
 };

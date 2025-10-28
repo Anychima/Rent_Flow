@@ -73,7 +73,7 @@ const TenantPortal: React.FC<TenantPortalProps> = ({ onBack }) => {
   const [loginWallet, setLoginWallet] = useState('');
   const [dashboardData, setDashboardData] = useState<DashboardData | null>(null);
   const [loading, setLoading] = useState(false);
-  const [activeTab, setActiveTab] = useState<'overview' | 'maintenance' | 'payments'>('overview');
+  const [activeTab, setActiveTab] = useState<'overview' | 'maintenance' | 'payments' | 'wallet'>('overview');
   const [showMaintenanceForm, setShowMaintenanceForm] = useState(false);
   const [maintenanceForm, setMaintenanceForm] = useState({
     title: '',
@@ -81,6 +81,8 @@ const TenantPortal: React.FC<TenantPortalProps> = ({ onBack }) => {
     category: 'plumbing',
     priority: 'medium'
   });
+  const [newWalletAddress, setNewWalletAddress] = useState('');
+  const [walletType, setWalletType] = useState<'circle' | 'external'>('circle');
 
   const handleLogin = async () => {
     if (!loginEmail && !loginWallet) {
@@ -204,6 +206,61 @@ const TenantPortal: React.FC<TenantPortalProps> = ({ onBack }) => {
     }
   };
 
+  const handleAddWallet = async () => {
+    if (!dashboardData?.tenant?.id) return;
+
+    if (!newWalletAddress) {
+      alert('Please enter a wallet address');
+      return;
+    }
+
+    // Validate wallet address format
+    if (walletType === 'circle') {
+      // UUID format for Circle wallets
+      const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+      if (!uuidRegex.test(newWalletAddress)) {
+        alert('Invalid Circle wallet ID format. Must be a UUID.');
+        return;
+      }
+    } else {
+      // EVM address format (0x...)
+      if (!/^0x[0-9a-fA-F]{40}$/.test(newWalletAddress)) {
+        alert('Invalid wallet address format. Must be an EVM address (0x...)');
+        return;
+      }
+    }
+
+    try {
+      setLoading(true);
+      const response = await fetch(
+        `${API_URL}/api/users/${dashboardData.tenant.id}`,
+        {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            wallet_address: newWalletAddress,
+            circle_wallet_id: walletType === 'circle' ? newWalletAddress : undefined
+          }),
+        }
+      );
+
+      const result = await response.json();
+
+      if (result.success) {
+        alert('✅ Wallet address updated successfully!');
+        setNewWalletAddress('');
+        await fetchDashboard(dashboardData.tenant.id);
+      } else {
+        alert(result.error || 'Failed to update wallet');
+      }
+    } catch (error) {
+      console.error('Error updating wallet:', error);
+      alert('Failed to update wallet. Please try again.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
   if (!isLoggedIn) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 p-8">
@@ -245,7 +302,7 @@ const TenantPortal: React.FC<TenantPortalProps> = ({ onBack }) => {
                   type="text"
                   value={loginWallet}
                   onChange={(e) => setLoginWallet(e.target.value)}
-                  placeholder="Your Solana wallet address"
+                  placeholder="Your Arc wallet address"
                   className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
                 />
               </div>
@@ -375,6 +432,16 @@ const TenantPortal: React.FC<TenantPortalProps> = ({ onBack }) => {
             }`}
           >
             💳 Payments
+          </button>
+          <button
+            onClick={() => setActiveTab('wallet')}
+            className={`px-6 py-3 rounded-lg font-medium ${
+              activeTab === 'wallet'
+                ? 'bg-blue-600 text-white'
+                : 'bg-white text-gray-700 hover:bg-gray-50'
+            }`}
+          >
+            👛 Wallet
           </button>
         </div>
 
@@ -568,14 +635,14 @@ const TenantPortal: React.FC<TenantPortalProps> = ({ onBack }) => {
               {payments?.map((payment) => (
                 <div key={payment.id} className="bg-white rounded-xl shadow-lg p-6">
                   <div className="flex justify-between items-start">
-                    <div>
+                    <div className="flex-1">
                       <h3 className="text-lg font-bold text-gray-800 mb-2">
                         ${payment.amount_usdc} USDC
                       </h3>
                       <p className="text-gray-600 mb-2 capitalize">
                         {payment.payment_type.replace('_', ' ')}
                       </p>
-                      <div className="flex space-x-4 text-sm">
+                      <div className="flex flex-wrap gap-2 text-sm">
                         <span
                           className={`px-3 py-1 rounded-full ${
                             payment.status === 'completed'
@@ -590,13 +657,32 @@ const TenantPortal: React.FC<TenantPortalProps> = ({ onBack }) => {
                           {payment.status}
                         </span>
                         {payment.transaction_hash && (
-                          <span className="text-gray-500">
-                            TX: {payment.transaction_hash.substring(0, 8)}...
-                          </span>
+                          <div className="flex items-center space-x-2">
+                            <span className="text-gray-500">TX:</span>
+                            <a
+                              href={`https://testnet.arcscan.app/tx/${payment.transaction_hash}`}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="text-blue-600 hover:text-blue-800 hover:underline font-mono"
+                              title={payment.transaction_hash}
+                            >
+                              {payment.transaction_hash.substring(0, 10)}...{payment.transaction_hash.substring(payment.transaction_hash.length - 8)}
+                            </a>
+                            <button
+                              onClick={() => {
+                                navigator.clipboard.writeText(payment.transaction_hash!);
+                                alert('✅ Transaction hash copied to clipboard!');
+                              }}
+                              className="text-gray-500 hover:text-gray-700"
+                              title="Copy transaction hash"
+                            >
+                              📋
+                            </button>
+                          </div>
                         )}
                       </div>
                     </div>
-                    <div className="text-right">
+                    <div className="text-right ml-4">
                       <p className="text-sm text-gray-500 mb-2">
                         Due: {new Date(payment.due_date).toLocaleDateString()}
                       </p>
@@ -618,6 +704,141 @@ const TenantPortal: React.FC<TenantPortalProps> = ({ onBack }) => {
                   </div>
                 </div>
               ))}
+            </div>
+          </div>
+        )}
+
+        {/* Wallet Tab */}
+        {activeTab === 'wallet' && (
+          <div>
+            <h2 className="text-2xl font-bold text-gray-800 mb-6">Wallet Management</h2>
+
+            {/* Current Wallet Info */}
+            <div className="bg-white rounded-xl shadow-lg p-6 mb-6">
+              <h3 className="text-lg font-semibold text-gray-800 mb-4">👛 Current Wallet</h3>
+              <div className="space-y-3">
+                {tenant?.wallet_address ? (
+                  <>
+                    <div>
+                      <p className="text-sm text-gray-600 mb-1">Wallet Address</p>
+                      <div className="flex items-center space-x-2">
+                        <p className="font-mono text-sm bg-gray-100 px-3 py-2 rounded break-all flex-1">
+                          {tenant.wallet_address}
+                        </p>
+                        <button
+                          onClick={() => {
+                            navigator.clipboard.writeText(tenant.wallet_address!);
+                            alert('✅ Wallet address copied to clipboard!');
+                          }}
+                          className="px-3 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
+                          title="Copy address"
+                        >
+                          📋 Copy
+                        </button>
+                      </div>
+                    </div>
+                    {(tenant as any).circle_wallet_id && (
+                      <div>
+                        <p className="text-sm text-gray-600 mb-1">Circle Wallet ID</p>
+                        <div className="flex items-center space-x-2">
+                          <p className="font-mono text-sm bg-gray-100 px-3 py-2 rounded break-all flex-1">
+                            {(tenant as any).circle_wallet_id}
+                          </p>
+                          <button
+                            onClick={() => {
+                              navigator.clipboard.writeText((tenant as any).circle_wallet_id);
+                              alert('✅ Circle wallet ID copied to clipboard!');
+                            }}
+                            className="px-3 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
+                            title="Copy wallet ID"
+                          >
+                            📋 Copy
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                  </>
+                ) : (
+                  <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
+                    <p className="text-yellow-800">⚠️ No wallet configured yet. Add a wallet below to make payments.</p>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Add/Update Wallet */}
+            <div className="bg-white rounded-xl shadow-lg p-6">
+              <h3 className="text-lg font-semibold text-gray-800 mb-4">➕ Add/Update Wallet</h3>
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Wallet Type
+                  </label>
+                  <div className="flex space-x-4">
+                    <label className="flex items-center">
+                      <input
+                        type="radio"
+                        value="circle"
+                        checked={walletType === 'circle'}
+                        onChange={(e) => setWalletType(e.target.value as 'circle' | 'external')}
+                        className="mr-2"
+                      />
+                      <span>Circle Wallet (Arc Testnet)</span>
+                    </label>
+                    <label className="flex items-center">
+                      <input
+                        type="radio"
+                        value="external"
+                        checked={walletType === 'external'}
+                        onChange={(e) => setWalletType(e.target.value as 'circle' | 'external')}
+                        className="mr-2"
+                      />
+                      <span>External Wallet (EVM Address)</span>
+                    </label>
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    {walletType === 'circle' ? 'Circle Wallet ID (UUID)' : 'Wallet Address (0x...)'}
+                  </label>
+                  <input
+                    type="text"
+                    value={newWalletAddress}
+                    onChange={(e) => setNewWalletAddress(e.target.value)}
+                    placeholder={walletType === 'circle' ? 'xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx' : '0x...'}
+                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                  />
+                  <p className="text-xs text-gray-500 mt-1">
+                    {walletType === 'circle'
+                      ? 'Enter your Circle wallet UUID from the Circle dashboard'
+                      : 'Enter your EVM-compatible wallet address (e.g., MetaMask, Arc wallet)'}
+                  </p>
+                </div>
+
+                <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                  <p className="text-sm text-blue-800">
+                    <strong>💡 Tip:</strong> For Arc Testnet payments, we recommend using a Circle wallet.
+                    You can create one at{' '}
+                    <a
+                      href="https://console.circle.com"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="underline hover:text-blue-900"
+                    >
+                      Circle Console
+                    </a>
+                  </p>
+                </div>
+
+                <button
+                  onClick={handleAddWallet}
+                  disabled={loading || !newWalletAddress}
+                  className="w-full px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:bg-gray-400 font-medium"
+                >
+                  {loading ? 'Updating...' : tenant?.wallet_address ? 'Update Wallet' : 'Add Wallet'}
+                </button>
+              </div>
             </div>
           </div>
         )}

@@ -259,7 +259,7 @@ export default function PaymentForm({ payment, onClose, onSubmit }: PaymentFormP
               <span className="text-yellow-600 text-xl">💡</span>
               <div className="text-sm text-yellow-800">
                 <p className="font-medium mb-1">Payment Processing</p>
-                <p>Circle API integration for USDC transfers is ready. Payments will be recorded in the system and can be processed on Solana Devnet.</p>
+                <p>Circle API integration for USDC transfers is ready. Payments will be recorded in the system and can be processed on Arc Testnet.</p>
               </div>
             </div>
           </div>

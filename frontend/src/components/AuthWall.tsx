@@ -19,8 +19,8 @@ const AuthWall: React.FC<AuthWallProps> = ({ returnUrl, mode: initialMode = 'sig
     email: '',
     password: '',
     fullName: '',
-    confirmPassword: '',
-    walletAddress: '' // Add wallet address field
+    confirmPassword: ''
+    // Removed walletAddress - Arc wallet created automatically on backend
   });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -56,8 +56,8 @@ const AuthWall: React.FC<AuthWallProps> = ({ returnUrl, mode: initialMode = 'sig
           formData.email,
           formData.password,
           formData.fullName,
-          role, // Pass the selected role
-          formData.walletAddress || undefined // Pass wallet address if provided
+          role // Pass the selected role
+          // No wallet address - Arc wallet created automatically by backend
         );
 
         if (signUpError) {
@@ -197,28 +197,8 @@ const AuthWall: React.FC<AuthWallProps> = ({ returnUrl, mode: initialMode = 'sig
                   required={mode === 'signup'}
                 />
               </div>
-            </div>
-          )}
-
-          {/* Wallet Address (Signup Only) */}
-          {mode === 'signup' && (
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                Wallet Address (Optional)
-              </label>
-              <div className="relative">
-                <Briefcase className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
-                <input
-                  type="text"
-                  name="walletAddress"
-                  value={formData.walletAddress}
-                  onChange={handleInputChange}
-                  placeholder="Your wallet address (can add later)"
-                  className="w-full pl-10 pr-4 py-3 border-2 border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all"
-                />
-              </div>
               <p className="mt-1 text-xs text-gray-500">
-                💡 You can add or update your wallet address later in settings
+                💡 Your Arc wallet will be created automatically after signup
               </p>
             </div>
           )}
@@ -334,7 +314,7 @@ const AuthWall: React.FC<AuthWallProps> = ({ returnUrl, mode: initialMode = 'sig
               <Shield className="w-4 h-4 text-blue-600 flex-shrink-0 mt-0.5" />
               <div>
                 <div className="font-semibold text-gray-900">Blockchain Secure</div>
-                <div>Verified on Solana</div>
+                <div>Verified on Arc</div>
               </div>
             </div>
             <div className="flex items-start gap-2">

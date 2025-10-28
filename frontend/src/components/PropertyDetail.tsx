@@ -101,10 +101,10 @@ const PropertyDetail: React.FC = () => {
         });
         setIsSaved(false);
       } else {
-        // Save property
+        // Save property (use camelCase to match backend)
         await axios.post('http://localhost:3001/api/saved-properties', {
-          user_id: user.id,
-          property_id: id
+          userId: user.id,
+          propertyId: id
         });
         setIsSaved(true);
       }
@@ -463,7 +463,7 @@ const PropertyDetail: React.FC = () => {
                   Blockchain Verified
                 </h4>
                 <p className="text-sm text-gray-600">
-                  This property is verified on Solana blockchain with secure USDC payments
+                  This property is verified on Arc blockchain with secure USDC payments
                 </p>
               </div>
             </div>

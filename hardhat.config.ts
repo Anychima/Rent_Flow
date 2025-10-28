@@ -21,7 +21,7 @@ const config: HardhatUserConfig = {
         // DECISION: 200 runs balances deployment cost vs execution cost
         // REASON: Standard for most contracts, good for moderate usage
       },
-      viaIR: false, // DECISION: Disabled for faster compilation during development
+      viaIR: true, // ENABLED: Required for complex contracts to avoid "stack too deep" errors
     },
   },
   

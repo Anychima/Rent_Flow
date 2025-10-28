@@ -1,0 +1,10 @@
+{
+  "network": "arc",
+  "chainId": 5042002,
+  "deployer": "0x4e076D7ce8F401858E3026BC567478C6611d741a",
+  "timestamp": "2025-10-28T16:38:19.073Z",
+  "contracts": {
+    "MockUSDC": "0xD23B452fFebFB827E81E8267218D43D2Aa40C989",
+    "RentFlowCore": "0xd1209641F06d7646EEb373f5d90CAA083aa843D0"
+  }
+}

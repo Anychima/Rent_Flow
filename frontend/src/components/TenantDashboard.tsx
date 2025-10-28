@@ -25,6 +25,13 @@ interface Lease {
   security_deposit_usdc: number;
   rent_due_day: number;
   status: string;
+  lease_status?: string;
+  blockchain_lease_id?: number;
+  blockchain_transaction_hash?: string;
+  tenant_signature?: string;
+  landlord_signature?: string;
+  tenant_signed_at?: string;
+  landlord_signed_at?: string;
   property: Property;
 }
 
@@ -77,12 +84,15 @@ export default function TenantDashboard() {
     const loadDashboard = async () => {
       if (userProfile?.id && mounted) {
         await fetchDashboard();
+        // Check for pending payments that block tenant activation
+        checkPendingActivationPayments();
       } else if (!userProfile?.id) {
         console.warn('⚠️  TenantDashboard mounted but no userProfile.id yet');
         // Set a short timeout to retry
         setTimeout(() => {
           if (mounted && userProfile?.id) {
             fetchDashboard();
+            checkPendingActivationPayments();
           }
         }, 1000);
       }
@@ -94,6 +104,30 @@ export default function TenantDashboard() {
       mounted = false;
     };
   }, [userProfile?.id]);
+
+  // Check if user has pending payments blocking tenant activation
+  const checkPendingActivationPayments = async () => {
+    if (!userProfile?.id) return;
+
+    try {
+      const response = await fetch(`${API_URL}/api/payments/pending?tenant_id=${userProfile.id}`);
+      const result = await response.json();
+
+      if (result.success && result.data && result.data.length > 0) {
+        // Check if these are activation-blocking payments (security deposit + first rent)
+        const hasPendingActivation = result.data.some((p: Payment) => 
+          (p.payment_type === 'security_deposit' || p.payment_type === 'rent') && 
+          p.status === 'pending'
+        );
+
+        if (hasPendingActivation && userProfile.role === 'prospective_tenant') {
+          console.log('⚠️  User has pending activation payments:', result.data);
+        }
+      }
+    } catch (error) {
+      console.warn('⚠️  Could not check pending payments:', error);
+    }
+  };
 
   const fetchDashboard = async () => {
     if (!userProfile?.id) {
@@ -540,6 +574,59 @@ Your payment is being processed.`);
         </div>
       </div>
 
+      {/* Pending Activation Payment Alert */}
+      {userProfile?.role === 'prospective_tenant' && dashboardData?.payments && dashboardData.payments.some(p => 
+        (p.payment_type === 'security_deposit' || p.payment_type === 'rent') && p.status === 'pending'
+      ) && (
+        <div className="bg-yellow-50 border-l-4 border-yellow-400">
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
+            <div className="flex items-start">
+              <div className="flex-shrink-0">
+                <svg className="h-6 w-6 text-yellow-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                </svg>
+              </div>
+              <div className="ml-3 flex-1">
+                <h3 className="text-sm font-medium text-yellow-800">
+                  💳 Payment Required to Activate Lease
+                </h3>
+                <div className="mt-2 text-sm text-yellow-700">
+                  <p className="mb-2">
+                    Your lease has been fully signed! To complete your move-in and become a tenant, please complete the following payments:
+                  </p>
+                  <ul className="list-disc list-inside space-y-1 ml-4">
+                    {dashboardData.payments
+                      .filter(p => (p.payment_type === 'security_deposit' || p.payment_type === 'rent') && p.status === 'pending')
+                      .map(payment => (
+                        <li key={payment.id}>
+                          {payment.payment_type === 'security_deposit' ? '🛡️ Security Deposit' : '🏠 First Month Rent'}: 
+                          <strong className="font-semibold"> ${payment.amount_usdc} USDC</strong>
+                          <span className="ml-2 text-xs">(Due: {new Date(payment.due_date).toLocaleDateString()})</span>
+                        </li>
+                      ))
+                    }
+                  </ul>
+                </div>
+                <div className="mt-4">
+                  <button
+                    onClick={() => setActiveTab('payments')}
+                    className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-yellow-600 hover:bg-yellow-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-yellow-500"
+                  >
+                    <svg className="-ml-1 mr-2 h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z" />
+                    </svg>
+                    Complete Payments Now
+                  </button>
+                  <span className="ml-3 text-xs text-yellow-600">
+                    Once payments are complete, you'll be automatically upgraded to tenant status
+                  </span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Tabs */}
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 mt-6">
         <div className="border-b border-gray-200">
@@ -567,29 +654,136 @@ Your payment is being processed.`);
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
             {/* Property Info */}
             {dashboardData?.lease ? (
-              <div className="lg:col-span-2 bg-white rounded-xl shadow-sm p-6">
-                <div className="flex items-center justify-between mb-4">
-                  <h2 className="text-lg font-semibold text-gray-900">Your Property</h2>
-                  <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
-                    Active Lease
-                  </span>
-                </div>
-                <div className="space-y-3">
-                  <div>
-                    <h3 className="text-xl font-bold text-gray-900">{dashboardData.lease.property.title}</h3>
-                    <p className="text-gray-600">{dashboardData.lease.property.address}</p>
-                    <p className="text-gray-600">{dashboardData.lease.property.city}, {dashboardData.lease.property.state}</p>
+              <div className="lg:col-span-2 space-y-6">
+                {/* Property Card */}
+                <div className="bg-white rounded-xl shadow-sm p-6">
+                  <div className="flex items-center justify-between mb-4">
+                    <h2 className="text-lg font-semibold text-gray-900">Your Property</h2>
+                    <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
+                      Active Lease
+                    </span>
                   </div>
-                  <div className="grid grid-cols-2 gap-4 pt-4 border-t">
+                  <div className="space-y-3">
                     <div>
-                      <p className="text-sm text-gray-500">Monthly Rent</p>
-                      <p className="text-lg font-semibold">${dashboardData.lease.monthly_rent_usdc} USDC</p>
+                      <h3 className="text-xl font-bold text-gray-900">{dashboardData.lease.property.title}</h3>
+                      <p className="text-gray-600">{dashboardData.lease.property.address}</p>
+                      <p className="text-gray-600">{dashboardData.lease.property.city}, {dashboardData.lease.property.state}</p>
                     </div>
-                    <div>
-                      <p className="text-sm text-gray-500">Lease Period</p>
-                      <p className="text-lg font-semibold">
-                        {new Date(dashboardData.lease.start_date).toLocaleDateString()} - {new Date(dashboardData.lease.end_date).toLocaleDateString()}
-                      </p>
+                    <div className="grid grid-cols-2 gap-4 pt-4 border-t">
+                      <div>
+                        <p className="text-sm text-gray-500">Monthly Rent</p>
+                        <p className="text-lg font-semibold">${dashboardData.lease.monthly_rent_usdc} USDC</p>
+                      </div>
+                      <div>
+                        <p className="text-sm text-gray-500">Lease Period</p>
+                        <p className="text-lg font-semibold">
+                          {new Date(dashboardData.lease.start_date).toLocaleDateString()} - {new Date(dashboardData.lease.end_date).toLocaleDateString()}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Lease Agreement Card */}
+                <div className="bg-white rounded-xl shadow-sm p-6">
+                  <div className="flex items-center justify-between mb-4">
+                    <h2 className="text-lg font-semibold text-gray-900">📜 Lease Agreement</h2>
+                    {dashboardData.lease.blockchain_lease_id && (
+                      <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
+                        ⛓️ On-Chain
+                      </span>
+                    )}
+                  </div>
+                  
+                  <div className="space-y-4">
+                    {/* Signing Status */}
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="bg-gray-50 rounded-lg p-4">
+                        <div className="flex items-center justify-between mb-2">
+                          <p className="text-sm text-gray-600">Tenant Signature</p>
+                          {dashboardData.lease.tenant_signed_at ? (
+                            <span className="text-green-600 text-xl">✅</span>
+                          ) : (
+                            <span className="text-gray-400 text-xl">⏳</span>
+                          )}
+                        </div>
+                        {dashboardData.lease.tenant_signed_at && (
+                          <p className="text-xs text-gray-500">
+                            {new Date(dashboardData.lease.tenant_signed_at).toLocaleDateString()}
+                          </p>
+                        )}
+                      </div>
+                      
+                      <div className="bg-gray-50 rounded-lg p-4">
+                        <div className="flex items-center justify-between mb-2">
+                          <p className="text-sm text-gray-600">Landlord Signature</p>
+                          {dashboardData.lease.landlord_signed_at ? (
+                            <span className="text-green-600 text-xl">✅</span>
+                          ) : (
+                            <span className="text-gray-400 text-xl">⏳</span>
+                          )}
+                        </div>
+                        {dashboardData.lease.landlord_signed_at && (
+                          <p className="text-xs text-gray-500">
+                            {new Date(dashboardData.lease.landlord_signed_at).toLocaleDateString()}
+                          </p>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Blockchain Info */}
+                    {dashboardData.lease.blockchain_transaction_hash ? (
+                      <div className="bg-blue-50 rounded-lg p-4">
+                        <p className="text-sm text-gray-700 font-medium mb-2">⛓️ Blockchain Transaction</p>
+                        <div className="flex items-center space-x-2">
+                          <a
+                            href={`https://testnet.arcscan.app/tx/${dashboardData.lease.blockchain_transaction_hash}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="font-mono text-sm text-blue-600 hover:text-blue-800 hover:underline break-all"
+                            title={dashboardData.lease.blockchain_transaction_hash}
+                          >
+                            {dashboardData.lease.blockchain_transaction_hash.substring(0, 20)}...{dashboardData.lease.blockchain_transaction_hash.substring(dashboardData.lease.blockchain_transaction_hash.length - 16)}
+                          </a>
+                          <button
+                            onClick={() => {
+                              navigator.clipboard.writeText(dashboardData.lease!.blockchain_transaction_hash!);
+                              alert('✅ Transaction hash copied to clipboard!');
+                            }}
+                            className="text-gray-500 hover:text-gray-700 p-1 flex-shrink-0"
+                            title="Copy transaction hash"
+                          >
+                            📋
+                          </button>
+                        </div>
+                        {dashboardData.lease.blockchain_lease_id && (
+                          <p className="text-xs text-gray-600 mt-2">
+                            Lease ID: #{dashboardData.lease.blockchain_lease_id}
+                          </p>
+                        )}
+                      </div>
+                    ) : (
+                      <div className="bg-yellow-50 rounded-lg p-4 border border-yellow-200">
+                        <p className="text-sm text-yellow-800">
+                          📝 <strong>Awaiting On-Chain Storage:</strong> Your lease will be stored on Arc blockchain for immutability once both parties complete the digital signing process.
+                        </p>
+                      </div>
+                    )}
+
+                    {/* Lease Details */}
+                    <div className="border-t pt-4 space-y-2">
+                      <div className="flex justify-between text-sm">
+                        <span className="text-gray-600">Security Deposit</span>
+                        <span className="font-semibold">${dashboardData.lease.security_deposit_usdc} USDC</span>
+                      </div>
+                      <div className="flex justify-between text-sm">
+                        <span className="text-gray-600">Rent Due Day</span>
+                        <span className="font-semibold">{dashboardData.lease.rent_due_day} of each month</span>
+                      </div>
+                      <div className="flex justify-between text-sm">
+                        <span className="text-gray-600">Lease Status</span>
+                        <span className="font-semibold capitalize">{dashboardData.lease.lease_status || dashboardData.lease.status}</span>
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -782,6 +976,9 @@ Your payment is being processed.`);
                         Status
                       </th>
                       <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        Transaction Hash
+                      </th>
+                      <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                         Actions
                       </th>
                     </tr>
@@ -795,8 +992,8 @@ Your payment is being processed.`);
                         <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
                           ${payment.amount_usdc} USDC
                         </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                          {payment.payment_type || 'N/A'}
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 capitalize">
+                          {payment.payment_type ? payment.payment_type.replace('_', ' ') : 'N/A'}
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap">
                           <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
@@ -807,24 +1004,41 @@ Your payment is being processed.`);
                             {payment.status}
                           </span>
                         </td>
+                        <td className="px-6 py-4 text-sm">
+                          {payment.transaction_hash ? (
+                            <div className="flex items-center space-x-2">
+                              <a
+                                href={`https://testnet.arcscan.app/tx/${payment.transaction_hash}`}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="font-mono text-blue-600 hover:text-blue-800 hover:underline"
+                                title={payment.transaction_hash}
+                              >
+                                {payment.transaction_hash.substring(0, 10)}...{payment.transaction_hash.substring(payment.transaction_hash.length - 8)}
+                              </a>
+                              <button
+                                onClick={() => {
+                                  navigator.clipboard.writeText(payment.transaction_hash!);
+                                  alert('✅ Transaction hash copied to clipboard!');
+                                }}
+                                className="text-gray-500 hover:text-gray-700 p-1"
+                                title="Copy transaction hash"
+                              >
+                                📋
+                              </button>
+                            </div>
+                          ) : (
+                            <span className="text-gray-400">-</span>
+                          )}
+                        </td>
                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                           {payment.status === 'pending' && (
                             <button
                               onClick={() => handleInitiatePayment(payment.id)}
-                              className="text-blue-600 hover:text-blue-900"
+                              className="text-blue-600 hover:text-blue-900 font-medium"
                             >
                               Pay Now
                             </button>
-                          )}
-                          {payment.transaction_hash && (
-                            <a
-                              href={`https://solscan.io/tx/${payment.transaction_hash}`}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="text-blue-600 hover:text-blue-900 ml-2"
-                            >
-                              View Transaction
-                            </a>
                           )}
                         </td>
                       </tr>

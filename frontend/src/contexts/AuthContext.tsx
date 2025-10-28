@@ -1,9 +1,18 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
+import React, { createContext, useContext, useState, useEffect, useRef } from 'react';
 import { createClient, User, Session } from '@supabase/supabase-js';
 
 const supabase = createClient(
   process.env.REACT_APP_SUPABASE_URL!,
-  process.env.REACT_APP_SUPABASE_KEY!
+  process.env.REACT_APP_SUPABASE_KEY!,
+  {
+    auth: {
+      persistSession: true,
+      storageKey: 'rentflow-auth',
+      storage: window.localStorage,
+      autoRefreshToken: true,
+      detectSessionInUrl: true
+    }
+  }
 );
 
 interface UserProfile {
@@ -37,22 +46,36 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
   const [session, setSession] = useState<Session | null>(null);
   const [loading, setLoading] = useState(true);
+  const hasInitialized = useRef(false);
+  
+  // Add refs to prevent infinite loops
+  const lastFetchedUserId = useRef<string | null>(null);
+  const isFetchingProfile = useRef<boolean>(false);
 
-  // Fetch user profile from database
+  // Fetch user profile from database with loop prevention
   const fetchUserProfile = async (userId: string): Promise<UserProfile | null> => {
+    // Prevent concurrent fetches for the same user
+    if (isFetchingProfile.current && lastFetchedUserId.current === userId) {
+      console.log('⏸️ [AuthContext] Already fetching profile for this user, skipping...');
+      return null;
+    }
+    
     try {
+      isFetchingProfile.current = true;
+      lastFetchedUserId.current = userId;
+      
       console.log('🔍 [AuthContext] Fetching user profile for Auth ID:', userId);
       console.log('🌐 [AuthContext] Supabase URL:', process.env.REACT_APP_SUPABASE_URL);
       
-      // Try direct ID lookup first
+      // Try direct ID lookup first - use maybeSingle to avoid throwing on 0 rows
       console.log('📡 [AuthContext] Attempting direct ID lookup...');
       const { data, error } = await supabase
         .from('users')
         .select('*')
         .eq('id', userId)
-        .single();
+        .maybeSingle();
 
-      if (!error && data) {
+      if (data) {
         console.log('✅ [AuthContext] User profile loaded directly!');
         console.log('   ID:', data.id);
         console.log('   Email:', data.email);
@@ -60,16 +83,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         return data as UserProfile;
       }
 
-      // If direct lookup fails, try email fallback
-      console.warn('⚠️  [AuthContext] Direct ID lookup failed:', error?.message);
-      console.log('   Error code:', error?.code);
-      console.log('   Error details:', error?.details);
+      // If direct lookup returns no data, try email fallback ONCE
+      console.warn('⚠️ [AuthContext] Direct ID lookup returned no data');
+      if (error) {
+        console.warn('   Error:', error.message, '(Code:', error.code + ')');
+      }
       console.log('🔄 [AuthContext] Attempting email fallback...');
       
       const { data: { user } } = await supabase.auth.getUser();
       if (!user?.email) {
         console.error('❌ [AuthContext] No auth user or email available');
-        console.error('   This means Supabase auth succeeded but getUser() failed');
         return null;
       }
 
@@ -78,13 +101,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         .from('users')
         .select('*')
         .eq('email', user.email)
-        .single();
+        .maybeSingle();
       
       if (emailError) {
         console.error('❌ [AuthContext] Email lookup failed:', emailError.message);
-        console.error('   Error code:', emailError.code);
-        console.error('   Error details:', emailError.details);
         console.error('   This means the user exists in Auth but NOT in the users table!');
+        return null;
+      }
+      
+      if (!emailData) {
+        console.error('❌ [AuthContext] No user found by email in database');
+        console.error('   User exists in Auth but not in public.users table');
+        console.error('   The auth trigger may have failed during signup');
         return null;
       }
       
@@ -99,15 +127,44 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       console.error('   Exception type:', err instanceof Error ? err.constructor.name : typeof err);
       console.error('   Exception message:', err instanceof Error ? err.message : String(err));
       return null;
+    } finally {
+      isFetchingProfile.current = false;
     }
   };
 
   useEffect(() => {
     let mounted = true;
     let refreshInterval: NodeJS.Timeout | null = null;
+    let initializing = false;
+
+    // Clear any stuck sign-out flag on mount
+    sessionStorage.removeItem('signing_out');
+    sessionStorage.removeItem('signing_out_timestamp');
+    console.log('🧹 [AuthContext] Cleared any stuck sign-out flag');
+    
+    // Clear any stuck sign-in flag on mount
+    sessionStorage.removeItem('signing_in');
+    sessionStorage.removeItem('signing_in_timestamp');
+    console.log('🧹 [AuthContext] Cleared any stuck sign-in flag');
 
     // Get initial session
     const initializeAuth = async () => {
+      // Prevent duplicate initialization using ref (survives React strict mode double mount)
+      if (hasInitialized.current) {
+        console.log('✅ [AuthContext] Already initialized (ref check), setting loading to false');
+        setLoading(false);
+        return;
+      }
+      
+      // Prevent duplicate initialization
+      if (initializing) {
+        console.log('⚠️  [AuthContext] Already initializing, skipping...');
+        return;
+      }
+      
+      initializing = true;
+      hasInitialized.current = true; // Mark as initialized
+      
       try {
         console.log('🔐 [AuthContext] Initializing auth...');
         const { data: { session } } = await supabase.auth.getSession();
@@ -145,6 +202,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       } catch (error) {
         console.error('❌ [AuthContext] Error initializing auth:', error);
       } finally {
+        initializing = false;
         if (mounted) {
           console.log('✅ [AuthContext] Auth initialization complete, setting loading to false');
           setLoading(false);
@@ -184,25 +242,42 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         return;
       }
       
+      // IMPORTANT: Don't set loading to false yet - wait for profile
       setSession(session);
       setUser(session?.user ?? null);
       
       if (session?.user) {
         console.log('📊 [AuthContext] Auth change - fetching profile...');
-        const profile = await fetchUserProfile(session.user.id);
-        if (mounted) {
-          if (profile) {
-            console.log('✅ [AuthContext] Profile loaded after auth change');
-            setUserProfile(profile);
-          } else {
-            console.error('❌ [AuthContext] Profile not found after auth change');
+        
+        try {
+          const profile = await fetchUserProfile(session.user.id);
+          if (mounted) {
+            if (profile) {
+              console.log('✅ [AuthContext] Profile loaded after auth change');
+              setUserProfile(profile);
+            } else {
+              console.error('❌ [AuthContext] Profile not found after auth change');
+              setUserProfile(null);
+            }
+          }
+        } catch (profileError) {
+          console.error('❌ [AuthContext] Error fetching profile:', profileError);
+          if (mounted) {
             setUserProfile(null);
+          }
+        } finally {
+          // CRITICAL: Set loading to false ONLY after profile fetch completes
+          if (mounted) {
+            setLoading(false);
+            console.log('✅ [AuthContext] Loading set to false after profile handling');
           }
         }
       } else {
         console.log('🚫 [AuthContext] Auth change - no session, clearing profile');
         if (mounted) {
           setUserProfile(null);
+          setLoading(false);
+          console.log('✅ [AuthContext] Loading set to false (no session)');
         }
       }
       
@@ -213,6 +288,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           setUser(null);
           setUserProfile(null);
           setSession(null);
+          setLoading(false);
         }
       } else if (event === 'TOKEN_REFRESHED') {
         console.log('♻️  [AuthContext] Token refreshed successfully');
@@ -232,50 +308,83 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const signIn = async (email: string, password: string) => {
+    // Check if already signing in
+    const signingInFlag = sessionStorage.getItem('signing_in');
+    const signingInTimestamp = sessionStorage.getItem('signing_in_timestamp');
+    
+    // If flag exists and was set less than 30 seconds ago, skip (increased from 10s)
+    if (signingInFlag === 'true' && signingInTimestamp) {
+      const timeSinceFlag = Date.now() - parseInt(signingInTimestamp, 10);
+      if (timeSinceFlag < 30000) {
+        console.log('⚠️ [AuthContext] Sign in already in progress, skipping...');
+        return { error: new Error('Sign in already in progress') };
+      } else {
+        // Clear old stuck flag
+        console.log('🧹 [AuthContext] Clearing old sign-in flag');
+        sessionStorage.removeItem('signing_in');
+        sessionStorage.removeItem('signing_in_timestamp');
+      }
+    }
+    
+    // Set flags to prevent concurrent calls
+    sessionStorage.setItem('signing_in', 'true');
+    sessionStorage.setItem('signing_in_timestamp', Date.now().toString());
+    console.log('🔐 [AuthContext] Starting sign in process...');
+    
     try {
       console.log('🔐 [AuthContext] Signing in...', email);
       console.log('🌐 [AuthContext] Using Supabase URL:', process.env.REACT_APP_SUPABASE_URL);
       console.log('🔑 [AuthContext] API Key present:', !!process.env.REACT_APP_SUPABASE_KEY);
       
-      const { error, data } = await supabase.auth.signInWithPassword({
-        email,
-        password,
-      });
+      // Increase timeout to 30 seconds for slower networks
+      const signInPromise = supabase.auth.signInWithPassword({ email, password });
+      const timeoutPromise = new Promise((_, reject) => 
+        setTimeout(() => reject(new Error('Sign in timeout after 30 seconds - please check your connection')), 30000)
+      );
+      
+      console.log('📡 [AuthContext] Calling Supabase signInWithPassword...');
+      const { error, data } = await Promise.race([
+        signInPromise,
+        timeoutPromise
+      ]) as any;
       
       if (error) {
         console.error('❌ [AuthContext] Sign in error:', error.message);
         console.error('   Error status:', error.status);
         console.error('   Error name:', error.name);
+        
+        // Clear flags on error
+        sessionStorage.removeItem('signing_in');
+        sessionStorage.removeItem('signing_in_timestamp');
+        
         return { error };
       }
       
       console.log('✅ [AuthContext] Auth sign in successful');
       console.log('   User ID:', data.user?.id);
       console.log('   Email:', data.user?.email);
+      console.log('📊 [AuthContext] Profile will be loaded by onAuthStateChange listener');
       
-      if (data.user) {
-        console.log('📊 [AuthContext] Fetching user profile...');
-        const profile = await fetchUserProfile(data.user.id);
-        if (profile) {
-          console.log('✅ [AuthContext] Profile loaded successfully');
-          console.log('   Profile role:', profile.role);
-          setUserProfile(profile);
-        } else {
-          console.error('❌ [AuthContext] Failed to load user profile');
-          console.error('   This means auth succeeded but profile fetch failed');
-          console.error('   User may not exist in public.users table');
-          return { error: { message: 'User profile not found in database' } };
-        }
-      }
+      // Don't fetch profile here - let onAuthStateChange handle it
+      // This prevents duplicate fetches and race conditions
+      
+      // Clear signing in flag after successful sign in
+      sessionStorage.removeItem('signing_in');
+      sessionStorage.removeItem('signing_in_timestamp');
       
       return { error: null };
-    } catch (err) {
+    } catch (err: any) {
       console.error('❌ [AuthContext] Exception during sign in:', err);
+      
+      // Clear flag on error
+      sessionStorage.removeItem('signing_in');
+      sessionStorage.removeItem('signing_in_timestamp');
+      
       return { error: err };
     }
   };
 
-  const signUp = async (email: string, password: string, fullName: string, role?: string, walletAddress?: string) => {
+  const signUp = async (email: string, password: string, fullName: string, role?: string) => {
     const { error } = await supabase.auth.signUp({
       email,
       password,
@@ -283,7 +392,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         data: {
           full_name: fullName,
           role: role || 'prospective_tenant', // Pass role to metadata
-          wallet_address: walletAddress || '', // Pass wallet address to metadata
+          // Arc wallet will be created automatically by backend after user is created
         },
       },
     });
@@ -291,47 +400,99 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   const signOut = async () => {
+    // Check if already signing out using a more reliable flag
+    const signingOutFlag = sessionStorage.getItem('signing_out');
+    const signingOutTimestamp = sessionStorage.getItem('signing_out_timestamp');
+    
+    // If flag exists and was set less than 5 seconds ago, skip
+    if (signingOutFlag === 'true' && signingOutTimestamp) {
+      const timeSinceFlag = Date.now() - parseInt(signingOutTimestamp, 10);
+      if (timeSinceFlag < 5000) {
+        console.log('⚠️ [AuthContext] Sign out already in progress, skipping...');
+        return;
+      } else {
+        // Clear old stuck flag
+        console.log('🧹 [AuthContext] Clearing old sign-out flag');
+        sessionStorage.removeItem('signing_out');
+        sessionStorage.removeItem('signing_out_timestamp');
+      }
+    }
+    
+    // Set flags to prevent concurrent calls
+    sessionStorage.setItem('signing_out', 'true');
+    sessionStorage.setItem('signing_out_timestamp', Date.now().toString());
+    console.log('🚪 [AuthContext] Starting sign out process...');
+    
     try {
-      console.log('🚪 [AuthContext] Signing out...');
-      
       // Sign out from Supabase
-      await supabase.auth.signOut();
+      console.log('📡 [AuthContext] Calling Supabase signOut...');
+      const { error } = await supabase.auth.signOut();
       
-      // Clear all state
+      if (error) {
+        console.error('❌ [AuthContext] Supabase signOut error:', error);
+      } else {
+        console.log('✅ [AuthContext] Supabase signOut successful');
+      }
+      
+      // Clear all React state
+      console.log('🧹 [AuthContext] Clearing React state...');
       setUser(null);
       setUserProfile(null);
       setSession(null);
       
-      // Clear any cached data in localStorage
+      // Clear cached data in localStorage
       try {
-        localStorage.removeItem('supabase.auth.token');
-        console.log('🧹 [AuthContext] Cleared cached auth data');
+        console.log('🧹 [AuthContext] Clearing localStorage...');
+        const keysToRemove = [];
+        for (let i = 0; i < localStorage.length; i++) {
+          const key = localStorage.key(i);
+          if (key && (key.includes('supabase') || key.includes('auth'))) {
+            keysToRemove.push(key);
+          }
+        }
+        keysToRemove.forEach(key => localStorage.removeItem(key));
+        console.log(`✅ [AuthContext] Cleared ${keysToRemove.length} auth-related items from localStorage`);
       } catch (err) {
         console.warn('⚠️ [AuthContext] Could not clear localStorage:', err);
       }
       
-      console.log('✅ [AuthContext] Sign out complete');
+      // Clear sessionStorage auth items
+      try {
+        console.log('🧹 [AuthContext] Clearing sessionStorage...');
+        const keysToRemove = [];
+        for (let i = 0; i < sessionStorage.length; i++) {
+          const key = sessionStorage.key(i);
+          if (key && key.includes('supabase')) {
+            keysToRemove.push(key);
+          }
+        }
+        keysToRemove.forEach(key => sessionStorage.removeItem(key));
+        console.log(`✅ [AuthContext] Cleared ${keysToRemove.length} auth-related items from sessionStorage`);
+      } catch (err) {
+        console.warn('⚠️ [AuthContext] Could not clear sessionStorage:', err);
+      }
       
-      // Force redirect to login page after signout
-      console.log('🔄 [AuthContext] Redirecting to login page...');
-      window.location.href = '/login';
+      console.log('✅ [AuthContext] Sign out complete, preparing redirect...');
+      
     } catch (error) {
-      console.error('❌ [AuthContext] Error during sign out:', error);
+      console.error('❌ [AuthContext] Exception during sign out:', error);
       
       // Force clear state even if API call fails
       setUser(null);
       setUserProfile(null);
       setSession(null);
+    } finally {
+      // Clear the signing out flags BEFORE redirect
+      console.log('🧹 [AuthContext] Clearing sign-out flags...');
+      sessionStorage.removeItem('signing_out');
+      sessionStorage.removeItem('signing_out_timestamp');
       
-      // Try to clear localStorage anyway
-      try {
-        localStorage.removeItem('supabase.auth.token');
-      } catch (err) {
-        console.warn('⚠️ [AuthContext] Could not clear localStorage on error:', err);
-      }
+      // Small delay to ensure all cleanup completes
+      await new Promise(resolve => setTimeout(resolve, 100));
       
-      // Still redirect on error
-      window.location.href = '/login';
+      // Force redirect to home page
+      console.log('🔄 [AuthContext] Redirecting to home page...');
+      window.location.href = '/';
     }
   };
 

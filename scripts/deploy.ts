@@ -82,7 +82,4 @@ main()
   .catch((error) => {
     console.error("❌ Deployment failed:", error);
     process.exit(1);
-  });nContracts:");
-  console.log("  MockUSDC:", usdcAddress);
-  console.log("  RentFlowCore:", rentflowAddress);
-  console.log("\
+  });

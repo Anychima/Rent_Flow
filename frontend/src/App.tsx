@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { Routes, Route, useNavigate } from 'react-router-dom';
 import './index.css';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
+import { WalletProvider } from './contexts/WalletContext';
 import PropertyForm from './components/PropertyForm';
 import LeaseForm from './components/LeaseForm';
 import PaymentForm from './components/PaymentForm';
@@ -20,6 +21,7 @@ import LeaseReviewPage from './pages/LeaseReviewPage';
 import ApplicationReviewModal from './components/ApplicationReviewModal';
 import ChatBox from './components/ChatBox';
 import SavedPropertiesPage from './pages/SavedPropertiesPage';
+import WalletManagement from './components/WalletManagement';
 
 interface Toast {
   id: number;
@@ -595,7 +597,8 @@ function Dashboard() {
       setLoading(true);
       
       // For managers, fetch only their data
-      const managerId = userProfile?.role === 'manager' && userProfile?.id ? userProfile.id : null;
+      const isManager = userProfile?.role === 'manager';
+      const managerId = isManager && userProfile?.id ? userProfile.id : null;
       
       // Build URLs with manager_id parameter where applicable
       const propertiesUrl = managerId
@@ -736,7 +739,7 @@ function Dashboard() {
               </div>
               <div>
                 <h1 className="text-2xl font-bold text-gray-900">RentFlow AI</h1>
-                <p className="text-sm text-gray-500">Property Management on Solana</p>
+                <p className="text-sm text-gray-500">Property Management on Arc</p>
               </div>
             </div>
             <div className="flex items-center space-x-2">
@@ -758,7 +761,7 @@ function Dashboard() {
                 🔄 Refresh
               </button>
               <span className="px-3 py-1 bg-purple-100 text-purple-800 rounded-full text-sm font-medium">
-                Solana Devnet
+                Arc Testnet
               </span>
               <span className="px-3 py-1 bg-green-100 text-green-800 rounded-full text-sm font-medium">
                 ● Connected
@@ -772,7 +775,7 @@ function Dashboard() {
       <nav className="bg-white border-b">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex space-x-8">
-            {['dashboard', 'properties', 'applications', 'leases', 'payments', 'analytics', 'maintenance', 'notifications'].map((tab) => (
+            {['dashboard', 'properties', 'applications', 'leases', 'payments', 'analytics', 'maintenance', 'notifications', 'wallet'].map((tab) => (
               <button
                 key={tab}
                 onClick={() => setActiveTab(tab)}
@@ -1083,6 +1086,7 @@ function Dashboard() {
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Tenant</th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Amount</th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Due Date</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Transaction Hash</th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
                   </tr>
@@ -1103,10 +1107,32 @@ function Dashboard() {
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap">
                         <div className="text-sm text-gray-900">{payment.due_date}</div>
-                        {payment.transaction_hash && (
-                          <div className="text-xs text-gray-500 truncate max-w-[100px]" title={payment.transaction_hash}>
-                            {payment.transaction_hash.substring(0, 12)}...
+                      </td>
+                      <td className="px-6 py-4 text-sm">
+                        {payment.transaction_hash ? (
+                          <div className="flex items-center space-x-2">
+                            <a
+                              href={`https://testnet.arcscan.app/tx/${payment.transaction_hash}`}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="font-mono text-blue-600 hover:text-blue-800 hover:underline"
+                              title={payment.transaction_hash}
+                            >
+                              {payment.transaction_hash.substring(0, 10)}...{payment.transaction_hash.substring(payment.transaction_hash.length - 8)}
+                            </a>
+                            <button
+                              onClick={() => {
+                                navigator.clipboard.writeText(payment.transaction_hash!);
+                                alert('✅ Transaction hash copied to clipboard!');
+                              }}
+                              className="text-gray-500 hover:text-gray-700 p-1"
+                              title="Copy transaction hash"
+                            >
+                              📋
+                            </button>
                           </div>
+                        ) : (
+                          <span className="text-gray-400">-</span>
                         )}
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap">
@@ -1127,11 +1153,11 @@ function Dashboard() {
                           )}
                           {payment.transaction_hash && (
                             <a
-                              href={`https://explorer.solana.com/tx/${payment.transaction_hash}?cluster=devnet`}
+                              href={`https://testnet.arcscan.app/tx/${payment.transaction_hash}`}
                               target="_blank"
                               rel="noopener noreferrer"
                               className="text-blue-600 hover:text-blue-900"
-                              title="View on Solana Explorer"
+                              title="View on Arc Explorer"
                             >
                               🔗
                             </a>
@@ -1635,6 +1661,13 @@ function Dashboard() {
         {activeTab === 'notifications' && (
           <VoiceNotifications userId={user?.id} />
         )}
+
+        {activeTab === 'wallet' && user && (
+          <WalletManagement 
+            userId={user.id} 
+            userEmail={user.email || ''}
+          />
+        )}
       </main>
 
       {/* Toast Notifications */}
@@ -1660,7 +1693,7 @@ function Dashboard() {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
           <div className="flex items-center justify-between text-sm text-gray-500">
             <div>
-              <p>Powered by Circle API • Solana Devnet • Supabase</p>
+              <p>Powered by Circle API • Arc Testnet • Supabase</p>
             </div>
             <div className="flex items-center space-x-4">
               <span>Deployer: {process.env.REACT_APP_DEPLOYER_ADDRESS?.substring(0, 8)}...</span>
@@ -1916,17 +1949,19 @@ function AppContent() {
 export default function AppWrapper() {
   return (
     <AuthProvider>
-      <Routes>
-        <Route path="/" element={<App />} />
-        <Route path="/property/:id" element={<PropertyDetail />} />
-        <Route path="/apply/:id" element={<PropertyApplicationForm />} />
-        <Route path="/my-applications" element={<MyApplications />} />
-        <Route path="/saved-properties" element={<SavedPropertiesPage />} />
-        <Route path="/lease/sign/:id" element={<LeaseSigningPage />} />
-        <Route path="/lease/review/:id" element={<LeaseReviewPage />} />
-        <Route path="/login" element={<AuthWall mode="login" />} />
-        <Route path="/signup" element={<AuthWall mode="signup" />} />
-      </Routes>
+      <WalletProvider>
+        <Routes>
+          <Route path="/" element={<App />} />
+          <Route path="/property/:id" element={<PropertyDetail />} />
+          <Route path="/apply/:id" element={<PropertyApplicationForm />} />
+          <Route path="/my-applications" element={<MyApplications />} />
+          <Route path="/saved-properties" element={<SavedPropertiesPage />} />
+          <Route path="/lease/sign/:id" element={<LeaseSigningPage />} />
+          <Route path="/lease/review/:id" element={<LeaseReviewPage />} />
+          <Route path="/login" element={<AuthWall mode="login" />} />
+          <Route path="/signup" element={<AuthWall mode="signup" />} />
+        </Routes>
+      </WalletProvider>
     </AuthProvider>
   );
 }

@@ -22,7 +22,7 @@ class CirclePaymentService {
     
     const apiKey = process.env.CIRCLE_API_KEY || '';
     const entitySecret = process.env.ENTITY_SECRET || '';
-    this.blockchainNetwork = process.env.BLOCKCHAIN_NETWORK || 'solana';
+    this.blockchainNetwork = process.env.BLOCKCHAIN_NETWORK || 'arc-testnet';
     this.isConfigured = !!(apiKey && entitySecret);
     
     // USDC token ID from environment (specific to your wallet set)
@@ -190,7 +190,8 @@ class CirclePaymentService {
       let finalState = txState;
       let txHash = response?.data?.txHash;
 
-      while (attempt++ < 10) {
+      // Reduced to 5 attempts (15 seconds max) to avoid frontend timeout
+      while (attempt++ < 5) {
         await new Promise(resolve => setTimeout(resolve, 3000));
         
         try {
@@ -206,7 +207,7 @@ class CirclePaymentService {
           }
         } catch (pollError) {
           console.error('⚠️  Error polling transaction status:', pollError);
-          break;
+          // Continue polling even on error
         }
       }
 
@@ -219,13 +220,16 @@ class CirclePaymentService {
           transactionId: txId
         };
       } else if (finalState === 'FAILED' || finalState === 'REJECTED') {
+        console.error('❌ Transaction', finalState);
         return {
           success: false,
-          error: `Transaction ${finalState}`,
+          error: `Transaction ${finalState}. Please check your wallet balance and try again.`,
           transactionId: txId
         };
       } else {
-        // Still pending after polling
+        // Still pending after polling - return success with pending status
+        console.warn('⚠️  Transaction still pending after polling (state:', finalState, ')');
+        console.log('🔗 Will use transaction ID as hash:', txId);
         return {
           success: true,
           transactionHash: txHash || txId,

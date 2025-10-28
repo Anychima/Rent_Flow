@@ -19,7 +19,6 @@ interface Payment {
 
 interface PaymentSectionProps {
   leaseId: string;
-  tenantId: string;
   walletConnected: boolean;
   walletAddress?: string;
   walletId?: string;
@@ -29,7 +28,6 @@ interface PaymentSectionProps {
 
 export default function PaymentSection({
   leaseId,
-  tenantId,
   walletConnected,
   walletAddress,
   walletId,
@@ -49,19 +47,51 @@ export default function PaymentSection({
   const fetchPayments = async () => {
     try {
       setLoading(true);
+      console.log('💰 [PaymentSection] Fetching payments for lease:', leaseId);
+      
       const response = await axios.get(`${API_URL}/api/leases/${leaseId}/payments`);
       
+      console.log('📊 [PaymentSection] Payments API response:', response.data);
+      
       if (response.data.success) {
+        // Log all payments before filtering
+        console.log('💳 [PaymentSection] All payments:', response.data.data);
+        
         // Filter for pending initial payments only
         const initialPayments = response.data.data.filter(
-          (p: Payment) => p.status === 'pending' && 
-          (p.payment_type === 'security_deposit' || p.payment_type === 'rent')
+          (p: Payment) => {
+            const isPending = p.status === 'pending';
+            const isInitialType = p.payment_type === 'security_deposit' || p.payment_type === 'rent';
+            const isFailed = p.status === 'failed';
+            console.log(`   Payment ${p.id}:`, {
+              type: p.payment_type,
+              status: p.status,
+              amount: p.amount_usdc,
+              isPending,
+              isFailed,
+              isInitialType,
+              willShow: (isPending || isFailed) && isInitialType
+            });
+            return (isPending || isFailed) && isInitialType; // Show both pending AND failed payments
+          }
         );
+        
+        console.log('💵 [PaymentSection] Filtered pending payments:', initialPayments);
         setPayments(initialPayments);
+        
+        if (initialPayments.length === 0) {
+          console.log('🤔 [PaymentSection] No pending payments found. Checking if all complete...');
+          const allPayments = response.data.data;
+          const hasSecurityDeposit = allPayments.some((p: Payment) => p.payment_type === 'security_deposit');
+          const hasRent = allPayments.some((p: Payment) => p.payment_type === 'rent');
+          console.log('   Has security deposit payment:', hasSecurityDeposit);
+          console.log('   Has rent payment:', hasRent);
+          console.log('   Total payments:', allPayments.length);
+        }
       }
     } catch (err) {
-      console.error('Error fetching payments:', err);
-      setError('Failed to load payment information');
+      console.error('❌ [PaymentSection] Error fetching payments:', err);
+      setError('Failed to load payment information. Please refresh the page.');
     } finally {
       setLoading(false);
     }
@@ -93,33 +123,87 @@ export default function PaymentSection({
         walletId
       });
 
-      // Complete payment - backend will handle actual USDC transfer for Circle wallets
-      const response = await axios.post(`${API_URL}/api/payments/${confirmPayment.id}/complete`, {
-        tenant_id: tenantId,
-        wallet_address: walletAddress,
-        wallet_id: walletId,
-        wallet_type: walletType
-      });
+      // Step 1: Get lease details to find manager's wallet address
+      console.log('🔍 [Payment] Fetching lease details...');
+      const leaseResponse = await axios.get(`${API_URL}/api/leases/${leaseId}`);
+      
+      if (!leaseResponse.data.success) {
+        throw new Error('Failed to fetch lease details');
+      }
+
+      const lease = leaseResponse.data.data;
+      const managerWalletAddress = lease.manager_wallet_address;
+
+      if (!managerWalletAddress) {
+        throw new Error('Manager wallet address not found. Manager must sign the lease first.');
+      }
+
+      console.log('💰 [Payment] Manager wallet address:', managerWalletAddress);
+      console.log('💳 [Payment] Tenant wallet ID:', walletId);
+
+      // Step 2: Send payment via Arc Testnet
+      console.log('💸 [Payment] Sending payment via Arc Testnet...');
+      const response = await axios.post(
+        `${API_URL}/api/arc/payment/send`,
+        {
+          fromWalletId: walletId,  // Tenant's Circle wallet ID (UUID)
+          toAddress: managerWalletAddress,  // Manager's EVM address (0x...)
+          amount: confirmPayment.amount_usdc,
+          feeLevel: 'MEDIUM',
+          paymentId: confirmPayment.id,
+          leaseId: leaseId
+        }
+      );
 
       if (response.data.success) {
         console.log('✅ [Payment] Payment completed successfully');
+        const txHash = response.data.data.transactionHash;
+        const explorerUrl = response.data.data.explorerUrl;
+        
+        // Show success message
+        alert(
+          `Payment completed successfully!\n\n` +
+          `Type: ${confirmPayment.payment_type === 'security_deposit' ? 'Security Deposit' : 'First Month Rent'}\n` +
+          `Amount: $${confirmPayment.amount_usdc.toFixed(2)} USDC\n` +
+          (txHash ? `Transaction: ${txHash.substring(0, 20)}...\n` : '') +
+          (explorerUrl ? `View on Arc Explorer: ${explorerUrl}` : '')
+        );
         
         // Refresh payments list
         await fetchPayments();
         
-        // Check if lease was activated
-        if (response.data.lease_activated) {
-          console.log('🎉 [Payment] Lease activated! Notifying parent component...');
+        // Check if all payments are complete by fetching updated lease
+        const updatedLeaseResponse = await axios.get(`${API_URL}/api/leases/${leaseId}`);
+        if (updatedLeaseResponse.data.success) {
+          const updatedLease = updatedLeaseResponse.data.data;
           
-          // All payments complete! Notify parent to trigger role refresh
-          if (onPaymentComplete) {
-            onPaymentComplete();
+          if (updatedLease.lease_status === 'active') {
+            console.log('🎉 [Payment] Lease activated! Notifying parent component...');
+            
+            // Show activation message
+            alert(
+              '🎉 Lease Activated!\n\n' +
+              'All payments have been completed successfully.\n' +
+              'Your lease is now active and you have been promoted to tenant status.\n\n' +
+              'You will be redirected to the tenant dashboard shortly.'
+            );
+            
+            // All payments complete! Notify parent to trigger role refresh
+            if (onPaymentComplete) {
+              onPaymentComplete();
+            }
           }
         }
+      } else {
+        throw new Error(response.data.error || 'Payment failed');
       }
     } catch (err: any) {
       console.error('❌ [Payment] Error:', err);
-      setError(err.response?.data?.error || 'Payment failed. Please try again.');
+      setError(
+        err.response?.data?.error || 
+        err.message || 
+        'Payment failed. Please try again. If your wallet was debited, please contact support.'
+      );
     } finally {
       setProcessing(null);
     }
@@ -133,11 +217,35 @@ export default function PaymentSection({
     return (
       <div className="flex items-center justify-center p-8">
         <Loader className="w-6 h-6 animate-spin text-blue-600" />
+        <p className="ml-3 text-gray-600">Loading payment information...</p>
       </div>
     );
   }
 
-  if (payments.length === 0) {
+  // Show error if there's an error
+  if (error && payments.length === 0) {
+    return (
+      <div className="bg-red-50 border-2 border-red-200 rounded-lg p-6">
+        <div className="flex items-center gap-3">
+          <AlertCircle className="w-8 h-8 text-red-600" />
+          <div>
+            <h3 className="text-lg font-semibold text-red-800">Error Loading Payments</h3>
+            <p className="text-sm text-red-700">{error}</p>
+            <button
+              onClick={fetchPayments}
+              className="mt-3 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 text-sm font-medium"
+            >
+              Retry
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // Only show "All Payments Complete" if we actually have no pending payments
+  // AND we're not in an error state
+  if (payments.length === 0 && !loading && !error) {
     return (
       <div className="bg-green-50 border-2 border-green-200 rounded-lg p-6">
         <div className="flex items-center gap-3">
@@ -175,7 +283,7 @@ export default function PaymentSection({
       {walletConnected && (
         <div className="bg-white/60 rounded-lg p-4 border border-blue-200">
           <p className="text-xs font-medium text-gray-600 mb-1">
-            {walletType === 'phantom' ? 'Phantom Wallet' : 'Circle Wallet'}
+            Arc Wallet (Circle)
           </p>
           <p className="font-mono text-sm text-gray-900">
             {walletAddress?.substring(0, 12)}...{walletAddress?.substring(walletAddress.length - 8)}
@@ -210,30 +318,49 @@ export default function PaymentSection({
               </div>
             </div>
             
-            {securityDeposit.status === 'pending' ? (
-              <button
-                onClick={() => handlePayment(securityDeposit)}
-                disabled={!walletConnected || processing === securityDeposit.id}
-                className="w-full px-6 py-3 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
-              >
-                {processing === securityDeposit.id ? (
-                  <>
-                    <Loader className="w-4 h-4 animate-spin" />
-                    Processing...
-                  </>
-                ) : (
-                  <>
-                    <DollarSign className="w-4 h-4" />
-                    Pay Security Deposit
-                  </>
+            {securityDeposit.status === 'pending' || securityDeposit.status === 'failed' ? (
+              <>
+                {securityDeposit.status === 'failed' && (
+                  <div className="mb-3 bg-red-50 border border-red-200 rounded-lg p-3">
+                    <div className="flex items-start gap-2">
+                      <AlertCircle className="w-5 h-5 text-red-600 flex-shrink-0 mt-0.5" />
+                      <div>
+                        <p className="text-sm font-semibold text-red-800">Previous Payment Failed</p>
+                        <p className="text-xs text-red-700 mt-1">
+                          {securityDeposit.notes || 'Transaction failed. Please try again.'}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
                 )}
-              </button>
-            ) : (
+                <button
+                  onClick={() => handlePayment(securityDeposit)}
+                  disabled={!walletConnected || processing === securityDeposit.id}
+                  className={`w-full px-6 py-3 rounded-lg font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 ${
+                    securityDeposit.status === 'failed'
+                      ? 'bg-orange-600 hover:bg-orange-700 text-white'
+                      : 'bg-blue-600 hover:bg-blue-700 text-white'
+                  }`}
+                >
+                  {processing === securityDeposit.id ? (
+                    <>
+                      <Loader className="w-4 h-4 animate-spin" />
+                      Processing...
+                    </>
+                  ) : (
+                    <>
+                      <DollarSign className="w-4 h-4" />
+                      {securityDeposit.status === 'failed' ? 'Retry Payment' : 'Pay Security Deposit'}
+                    </>
+                  )}
+                </button>
+              </>
+            ) : securityDeposit.status === 'completed' ? (
               <div className="flex items-center gap-2 text-green-600 font-medium">
                 <CheckCircle className="w-5 h-5" />
                 Paid
               </div>
-            )}
+            ) : null}
           </div>
         )}
 
@@ -255,30 +382,49 @@ export default function PaymentSection({
               </div>
             </div>
             
-            {firstMonthRent.status === 'pending' ? (
-              <button
-                onClick={() => handlePayment(firstMonthRent)}
-                disabled={!walletConnected || processing === firstMonthRent.id}
-                className="w-full px-6 py-3 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
-              >
-                {processing === firstMonthRent.id ? (
-                  <>
-                    <Loader className="w-4 h-4 animate-spin" />
-                    Processing...
-                  </>
-                ) : (
-                  <>
-                    <DollarSign className="w-4 h-4" />
-                    Pay First Month Rent
-                  </>
+            {firstMonthRent.status === 'pending' || firstMonthRent.status === 'failed' ? (
+              <>
+                {firstMonthRent.status === 'failed' && (
+                  <div className="mb-3 bg-red-50 border border-red-200 rounded-lg p-3">
+                    <div className="flex items-start gap-2">
+                      <AlertCircle className="w-5 h-5 text-red-600 flex-shrink-0 mt-0.5" />
+                      <div>
+                        <p className="text-sm font-semibold text-red-800">Previous Payment Failed</p>
+                        <p className="text-xs text-red-700 mt-1">
+                          {firstMonthRent.notes || 'Transaction failed. Please try again.'}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
                 )}
-              </button>
-            ) : (
+                <button
+                  onClick={() => handlePayment(firstMonthRent)}
+                  disabled={!walletConnected || processing === firstMonthRent.id}
+                  className={`w-full px-6 py-3 rounded-lg font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 ${
+                    firstMonthRent.status === 'failed'
+                      ? 'bg-orange-600 hover:bg-orange-700 text-white'
+                      : 'bg-blue-600 hover:bg-blue-700 text-white'
+                  }`}
+                >
+                  {processing === firstMonthRent.id ? (
+                    <>
+                      <Loader className="w-4 h-4 animate-spin" />
+                      Processing...
+                    </>
+                  ) : (
+                    <>
+                      <DollarSign className="w-4 h-4" />
+                      {firstMonthRent.status === 'failed' ? 'Retry Payment' : 'Pay First Month Rent'}
+                    </>
+                  )}
+                </button>
+              </>
+            ) : firstMonthRent.status === 'completed' ? (
               <div className="flex items-center gap-2 text-green-600 font-medium">
                 <CheckCircle className="w-5 h-5" />
                 Paid
               </div>
-            )}
+            ) : null}
           </div>
         )}
       </div>
@@ -297,7 +443,7 @@ export default function PaymentSection({
       {!walletConnected && (
         <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
           <p className="text-sm text-yellow-800">
-            ⚠️ Your wallet is not connected. Please refresh the page and connect your wallet to make payments.
+            ⚠️ Please connect your wallet above to enable payment buttons.
           </p>
         </div>
       )}
@@ -355,7 +501,7 @@ export default function PaymentSection({
               <div className="flex gap-2">
                 <AlertCircle className="w-5 h-5 text-yellow-600 flex-shrink-0 mt-0.5" />
                 <p className="text-sm text-yellow-800">
-                  <strong>Development Mode:</strong> This will simulate a payment. In production, this would transfer real USDC from your wallet.
+                  <strong>Arc Testnet:</strong> This will transfer real USDC on Arc Testnet from your wallet to the property manager.
                 </p>
               </div>
             </div>

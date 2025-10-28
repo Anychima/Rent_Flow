@@ -1,0 +1,11 @@
+{
+  "network": "arc",
+  "chainId": 5042002,
+  "deployer": "0x4e076D7ce8F401858E3026BC567478C6611d741a",
+  "timestamp": "2025-10-28T20:22:04.842Z",
+  "contract": {
+    "name": "RentFlowLeaseSignature",
+    "address": "0x16c91074476E1d8f9984c79ad919C051a1366AA8",
+    "explorer": "https://testnet.arcscan.app/address/0x16c91074476E1d8f9984c79ad919C051a1366AA8"
+  }
+}
