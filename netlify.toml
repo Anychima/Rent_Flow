@@ -1,8 +1,10 @@
 [build]
-  # Build command for the frontend
-  command = "cd frontend && npm install && npm run build"
-  # Directory to publish (the frontend build output)
-  publish = "frontend/build"
+  # Base directory for the build
+  base = "frontend"
+  # Build command
+  command = "npm install && npm run build"
+  # Directory to publish (relative to base)
+  publish = "build"
   
 [[redirects]]
   # Redirect all requests to index.html for client-side routing
@@ -15,3 +17,5 @@
   NODE_VERSION = "18"
   # Skip optional dependencies
   NPM_FLAGS = "--legacy-peer-deps"
+  # Treat warnings as warnings, not errors
+  CI = "false"
