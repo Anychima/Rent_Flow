@@ -1,8 +1,8 @@
 [build]
   # Base directory for the build
   base = "frontend"
-  # Build command - ignore TypeScript errors for now
-  command = "npm install --legacy-peer-deps && DISABLE_ESLINT_PLUGIN=true npm run build"
+  # Build command - use legacy-peer-deps to resolve dependency conflicts
+  command = "npm install --legacy-peer-deps && npm run build"
   # Directory to publish (relative to base)
   publish = "build"
   
