@@ -1,0 +1,33 @@
+services:
+  - type: web
+    name: rentflow-backend
+    runtime: node
+    region: oregon
+    plan: free
+    buildCommand: cd backend && npm install && npm run build
+    startCommand: cd backend && npm start
+    envVars:
+      - key: NODE_VERSION
+        value: 18
+      - key: PORT
+        value: 3001
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_SERVICE_ROLE_KEY
+        sync: false
+      - key: OPENAI_API_KEY
+        sync: false
+      - key: ELEVENLABS_API_KEY
+        sync: false
+      - key: CIRCLE_API_KEY
+        sync: false
+      - key: ENTITY_SECRET
+        sync: false
+      - key: BLOCKCHAIN_NETWORK
+        value: solana
+      - key: ARC_DEPLOYER_ADDRESS
+        sync: false
+      - key: ARC_AI_AGENT_WALLET
+        sync: false
+      - key: USDC_TOKEN_ID
+        value: 8fb3cadb-0ef4-573d-8fcd-e194f961c728
