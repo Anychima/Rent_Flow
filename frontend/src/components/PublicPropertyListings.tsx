@@ -6,6 +6,9 @@ import { useAuth } from '../contexts/AuthContext';
 import PropertyComparisonModal from './PropertyComparisonModal';
 import { PropertyListSkeleton } from './SkeletonLoader';
 
+// Use deployed backend URL or fallback to localhost for development
+const API_URL = process.env.REACT_APP_BACKEND_URL || 'https://rent-flow.onrender.com';
+
 interface Property {
   id: string;
   title: string;
@@ -77,7 +80,7 @@ const PublicPropertyListings: React.FC = () => {
 
   const fetchProperties = async () => {
     try {
-      const response = await axios.get('http://localhost:3001/api/properties/public');
+      const response = await axios.get(`${API_URL}/api/properties/public`);
       if (response.data.success) {
         setProperties(response.data.data);
       } else {
@@ -95,7 +98,7 @@ const PublicPropertyListings: React.FC = () => {
     if (!userProfile?.id) return;
     
     try {
-      const response = await axios.get(`http://localhost:3001/api/saved-properties/user/${userProfile.id}`);
+      const response = await axios.get(`${API_URL}/api/saved-properties/user/${userProfile.id}`);
       if (response.data.success) {
         const savedIds = new Set<string>(response.data.data.map((sp: any) => sp.property_id));
         setSavedPropertyIds(savedIds);
@@ -117,14 +120,14 @@ const PublicPropertyListings: React.FC = () => {
 
     try {
       if (isSaved) {
-        await axios.delete(`http://localhost:3001/api/saved-properties/user/${userProfile.id}/property/${propertyId}`);
+        await axios.delete(`${API_URL}/api/saved-properties/user/${userProfile.id}/property/${propertyId}`);
         setSavedPropertyIds(prev => {
           const newSet = new Set(prev);
           newSet.delete(propertyId);
           return newSet;
         });
       } else {
-        await axios.post('http://localhost:3001/api/saved-properties', {
+        await axios.post(`${API_URL}/api/saved-properties`, {
           userId: userProfile.id,
           propertyId
         });
