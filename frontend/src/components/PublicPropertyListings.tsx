@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Search, MapPin, Home, Bed, Bath, DollarSign, Heart, Filter, User, LogOut, FileText, BarChart2 } from 'lucide-react';
+import { Search, MapPin, Home, Bed, Bath, DollarSign, Heart, Filter, User, LogOut, FileText, BarChart2, Menu, X } from 'lucide-react';
 import axios from 'axios';
 import { useAuth } from '../contexts/AuthContext';
 import PropertyComparisonModal from './PropertyComparisonModal';
@@ -54,6 +54,9 @@ const PublicPropertyListings: React.FC = () => {
   // Comparison state
   const [compareList, setCompareList] = useState<Property[]>([]);
   const [showComparison, setShowComparison] = useState(false);
+  
+  // Mobile menu state
+  const [showMobileMenu, setShowMobileMenu] = useState(false);
 
   // Available amenities for filtering
   const availableAmenities = [
@@ -417,20 +420,144 @@ const PublicPropertyListings: React.FC = () => {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-50 via-blue-50 to-indigo-50">
+      {/* Mobile Menu Overlay */}
+      {showMobileMenu && (
+        <div 
+          className="fixed inset-0 bg-black bg-opacity-50 z-40 md:hidden"
+          onClick={() => setShowMobileMenu(false)}
+        />
+      )}
+      
+      {/* Mobile Slide-out Menu */}
+      <div className={`fixed top-0 right-0 h-full w-80 bg-white shadow-2xl z-50 transform transition-transform duration-300 ease-in-out md:hidden ${
+        showMobileMenu ? 'translate-x-0' : 'translate-x-full'
+      }`}>
+        <div className="p-6">
+          {/* Close Button */}
+          <button
+            onClick={() => setShowMobileMenu(false)}
+            className="absolute top-4 right-4 p-2 hover:bg-gray-100 rounded-full transition-colors"
+          >
+            <X className="w-6 h-6" />
+          </button>
+          
+          {/* User Info */}
+          {user && userProfile && (
+            <div className="mb-8 pt-4">
+              <div className="flex items-center space-x-3 mb-4">
+                <div className="w-12 h-12 bg-gradient-to-br from-blue-500 to-indigo-500 rounded-full flex items-center justify-center text-white font-bold text-lg">
+                  {userProfile.full_name?.[0] || userProfile.email[0].toUpperCase()}
+                </div>
+                <div>
+                  <p className="font-semibold text-gray-900">{userProfile.full_name || 'User'}</p>
+                  <p className="text-sm text-gray-500">{userProfile.email}</p>
+                </div>
+              </div>
+            </div>
+          )}
+          
+          {/* Menu Items */}
+          <nav className="space-y-2">
+            <button
+              onClick={() => {
+                navigate('/');
+                setShowMobileMenu(false);
+              }}
+              className="w-full flex items-center space-x-3 px-4 py-3 text-gray-700 hover:bg-blue-50 hover:text-blue-600 rounded-lg transition-colors font-medium"
+            >
+              <Home className="w-5 h-5" />
+              <span>Browse Properties</span>
+            </button>
+            
+            {user && userProfile && (
+              <>
+                <button
+                  onClick={() => {
+                    navigate('/saved-properties');
+                    setShowMobileMenu(false);
+                  }}
+                  className="w-full flex items-center space-x-3 px-4 py-3 text-gray-700 hover:bg-blue-50 hover:text-blue-600 rounded-lg transition-colors font-medium"
+                >
+                  <Heart className="w-5 h-5" />
+                  <span>Saved Properties</span>
+                  {savedPropertyIds.size > 0 && (
+                    <span className="ml-auto bg-red-500 text-white text-xs font-bold px-2 py-1 rounded-full">
+                      {savedPropertyIds.size}
+                    </span>
+                  )}
+                </button>
+                
+                <button
+                  onClick={() => {
+                    navigate('/my-applications');
+                    setShowMobileMenu(false);
+                  }}
+                  className="w-full flex items-center space-x-3 px-4 py-3 text-gray-700 hover:bg-blue-50 hover:text-blue-600 rounded-lg transition-colors font-medium"
+                >
+                  <FileText className="w-5 h-5" />
+                  <span>My Applications</span>
+                </button>
+                
+                <div className="border-t border-gray-200 my-4"></div>
+                
+                <button
+                  onClick={async () => {
+                    await signOut();
+                    setShowMobileMenu(false);
+                    navigate('/');
+                  }}
+                  className="w-full flex items-center space-x-3 px-4 py-3 text-red-600 hover:bg-red-50 rounded-lg transition-colors font-medium"
+                >
+                  <LogOut className="w-5 h-5" />
+                  <span>Sign Out</span>
+                </button>
+              </>
+            )}
+            
+            {!user && (
+              <>
+                <button
+                  onClick={() => {
+                    navigate('/login');
+                    setShowMobileMenu(false);
+                  }}
+                  className="w-full flex items-center justify-center px-4 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-semibold"
+                >
+                  <User className="w-5 h-5 mr-2" />
+                  <span>Sign In</span>
+                </button>
+                
+                <button
+                  onClick={() => {
+                    navigate('/signup');
+                    setShowMobileMenu(false);
+                  }}
+                  className="w-full flex items-center justify-center px-4 py-3 border-2 border-blue-600 text-blue-600 rounded-lg hover:bg-blue-50 transition-colors font-semibold"
+                >
+                  Sign Up
+                </button>
+              </>
+            )}
+          </nav>
+        </div>
+      </div>
+      
       {/* Header */}
       <div className="bg-white shadow-md border-b border-gray-200">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
           <div className="flex items-center justify-between">
-            <div>
-              <h1 className="text-4xl font-bold bg-gradient-to-r from-blue-600 to-indigo-600 bg-clip-text text-transparent">
+            <div className="flex-1">
+              <h1 className="text-2xl sm:text-4xl font-bold bg-gradient-to-r from-blue-600 to-indigo-600 bg-clip-text text-transparent">
                 🏠 RentFlow AI
               </h1>
-              <p className="text-gray-600 mt-2 flex items-center gap-2">
+              <p className="text-sm sm:text-base text-gray-600 mt-2 flex items-center gap-2">
                 <span className="inline-block w-2 h-2 bg-green-500 rounded-full animate-pulse"></span>
                 Find your perfect home on the blockchain
               </p>
             </div>
-            <div className="flex space-x-3">
+            
+            {/* Desktop Menu */}
+            <div className="hidden md:flex space-x-3">
               {user && userProfile ? (
                 // Authenticated user menu
                 <>
@@ -480,35 +607,44 @@ const PublicPropertyListings: React.FC = () => {
                 </>
               )}
             </div>
+            
+            {/* Mobile Hamburger Menu Button */}
+            <button
+              onClick={() => setShowMobileMenu(true)}
+              className="md:hidden p-2 hover:bg-gray-100 rounded-lg transition-colors"
+              aria-label="Open menu"
+            >
+              <Menu className="w-6 h-6 text-gray-700" />
+            </button>
           </div>
         </div>
       </div>
 
       {/* Search and Filter Section */}
       <div className="bg-white border-b shadow-sm">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 sm:py-8">
           {/* Search Bar */}
-          <div className="flex gap-4">
+          <div className="flex flex-col sm:flex-row gap-3 sm:gap-4">
             <div className="flex-1 relative">
               <Search className="absolute left-4 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
               <input
                 type="text"
                 placeholder="Search by city, address, or property name..."
-                className="w-full pl-12 pr-4 py-4 border-2 border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all duration-200 text-gray-700 placeholder-gray-400"
+                className="w-full pl-12 pr-4 py-3 sm:py-4 border-2 border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all duration-200 text-gray-700 placeholder-gray-400"
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
               />
             </div>
             <button
               onClick={() => setShowFilters(!showFilters)}
-              className={`px-8 py-4 rounded-xl flex items-center gap-2 font-semibold transition-all duration-200 ${
+              className={`px-6 sm:px-8 py-3 sm:py-4 rounded-xl flex items-center justify-center gap-2 font-semibold transition-all duration-200 ${
                 showFilters 
                   ? 'bg-blue-600 text-white shadow-lg' 
                   : 'bg-white text-gray-700 border-2 border-gray-200 hover:border-blue-500'
               }`}
             >
               <Filter className="w-5 h-5" />
-              Filters
+              <span className="hidden sm:inline">Filters</span>
               {showFilters && <span className="text-xs bg-white/20 px-2 py-0.5 rounded-full">Active</span>}
             </button>
           </div>
