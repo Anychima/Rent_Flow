@@ -6,8 +6,6 @@ import { useAuth } from '../contexts/AuthContext';
 import PropertyComparisonModal from './PropertyComparisonModal';
 import { PropertyListSkeleton } from './SkeletonLoader';
 
-const API_URL = process.env.REACT_APP_BACKEND_URL || 'http://localhost:3001';
-
 interface Property {
   id: string;
   title: string;
@@ -41,7 +39,6 @@ const PublicPropertyListings: React.FC = () => {
   const [properties, setProperties] = useState<Property[]>([]);
   const [filteredProperties, setFilteredProperties] = useState<Property[]>([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [filterType, setFilterType] = useState<string[]>([]);
   const [priceRange, setPriceRange] = useState({ min: 0, max: 10000 });
@@ -80,46 +77,17 @@ const PublicPropertyListings: React.FC = () => {
 
   const fetchProperties = async () => {
     try {
-      console.log('🏠 [PublicPropertyListings] Fetching properties from API...');
-      console.log('   API URL:', `${API_URL}/api/properties/public`);
-      console.log('   Environment:', process.env.NODE_ENV);
-      console.log('   Backend URL configured:', process.env.REACT_APP_BACKEND_URL || 'Not set (using localhost)');
-      
-      const response = await axios.get(`${API_URL}/api/properties/public`, {
-        timeout: 10000 // 10 second timeout
-      });
-      console.log('📊 [PublicPropertyListings] API Response:', response.data);
-      
+      const response = await axios.get('http://localhost:3001/api/properties/public');
       if (response.data.success) {
-        console.log('✅ [PublicPropertyListings] Properties loaded:', response.data.data.length);
         setProperties(response.data.data);
-        setError(null); // Clear any previous errors
       } else {
-        console.error('❌ [PublicPropertyListings] API returned success=false');
         setProperties([]);
       }
     } catch (error: any) {
-      console.error('❌ [PublicPropertyListings] Error fetching properties:', error);
-      console.error('   Error message:', error.message);
-      console.error('   Error code:', error.code);
-      
-      // Show user-friendly error
-      if (error.code === 'ERR_NETWORK' || error.message.includes('Network Error')) {
-        console.error('🚫 [PublicPropertyListings] BACKEND NOT REACHABLE!');
-        console.error('   This usually means:');
-        console.error('   1. Backend is not deployed/running');
-        console.error('   2. CORS is blocking the request');
-        console.error('   3. Wrong backend URL configured');
-        console.error('   Current API_URL:', API_URL);
-        setError(`Backend server is not reachable. Please ensure the backend is running at ${API_URL}`);
-      } else {
-        setError(`Failed to load properties: ${error.message}`);
-      }
-      
+      console.error('Error fetching properties:', error);
       setProperties([]);
     } finally {
       setLoading(false);
-      console.log('✅ [PublicPropertyListings] Loading complete');
     }
   };
 
@@ -127,7 +95,7 @@ const PublicPropertyListings: React.FC = () => {
     if (!userProfile?.id) return;
     
     try {
-      const response = await axios.get(`${API_URL}/api/saved-properties/user/${userProfile.id}`);
+      const response = await axios.get(`http://localhost:3001/api/saved-properties/user/${userProfile.id}`);
       if (response.data.success) {
         const savedIds = new Set<string>(response.data.data.map((sp: any) => sp.property_id));
         setSavedPropertyIds(savedIds);
@@ -149,14 +117,14 @@ const PublicPropertyListings: React.FC = () => {
 
     try {
       if (isSaved) {
-        await axios.delete(`${API_URL}/api/saved-properties/user/${userProfile.id}/property/${propertyId}`);
+        await axios.delete(`http://localhost:3001/api/saved-properties/user/${userProfile.id}/property/${propertyId}`);
         setSavedPropertyIds(prev => {
           const newSet = new Set(prev);
           newSet.delete(propertyId);
           return newSet;
         });
       } else {
-        await axios.post(`${API_URL}/api/saved-properties`, {
+        await axios.post('http://localhost:3001/api/saved-properties', {
           userId: userProfile.id,
           propertyId
         });
@@ -855,28 +823,6 @@ const PublicPropertyListings: React.FC = () => {
 
         {loading ? (
           <PropertyListSkeleton count={6} />
-        ) : error ? (
-          <div className="text-center py-20">
-            <div className="inline-flex items-center justify-center w-20 h-20 bg-red-100 rounded-full mb-4">
-              <span className="text-4xl">⚠️</span>
-            </div>
-            <h3 className="text-2xl font-bold text-gray-900 mb-2">Unable to Load Properties</h3>
-            <p className="text-red-600 mb-4 max-w-lg mx-auto">{error}</p>
-            <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4 max-w-2xl mx-auto mb-6">
-              <p className="text-sm font-medium text-yellow-900 mb-2">💡 This happens because:</p>
-              <ul className="text-sm text-yellow-800 text-left space-y-1">
-                <li>• The backend server is not deployed to production</li>
-                <li>• You're viewing this on Netlify which only hosts the frontend</li>
-                <li>• The backend needs to be deployed separately (Render/Railway/Heroku)</li>
-              </ul>
-            </div>
-            <button
-              onClick={() => window.location.reload()}
-              className="px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-semibold transition-colors"
-            >
-              🔄 Try Again
-            </button>
-          </div>
         ) : filteredProperties.length === 0 ? (
           <div className="text-center py-20">
             <div className="inline-flex items-center justify-center w-20 h-20 bg-gray-100 rounded-full mb-4">
