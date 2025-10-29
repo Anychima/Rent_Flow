@@ -77,14 +77,23 @@ const PublicPropertyListings: React.FC = () => {
 
   const fetchProperties = async () => {
     try {
+      console.log('🏠 [PublicPropertyListings] Fetching properties from API...');
       const response = await axios.get('http://localhost:3001/api/properties/public');
+      console.log('📊 [PublicPropertyListings] API Response:', response.data);
+      
       if (response.data.success) {
+        console.log('✅ [PublicPropertyListings] Properties loaded:', response.data.data.length);
         setProperties(response.data.data);
+      } else {
+        console.error('❌ [PublicPropertyListings] API returned success=false');
+        setProperties([]);
       }
     } catch (error) {
-      console.error('Error fetching properties:', error);
+      console.error('❌ [PublicPropertyListings] Error fetching properties:', error);
+      setProperties([]);
     } finally {
       setLoading(false);
+      console.log('✅ [PublicPropertyListings] Loading complete');
     }
   };
 
@@ -166,6 +175,12 @@ const PublicPropertyListings: React.FC = () => {
   };
 
   const applyFilters = () => {
+    console.log('🔍 [PublicPropertyListings] Applying filters...');
+    console.log('   Total properties:', properties.length);
+    console.log('   Search term:', searchTerm);
+    console.log('   Filter type:', filterType);
+    console.log('   Price range:', priceRange);
+    
     let filtered = [...properties];
 
     if (searchTerm) {
@@ -215,6 +230,7 @@ const PublicPropertyListings: React.FC = () => {
     }
 
     setFilteredProperties(filtered);
+    console.log('✅ [PublicPropertyListings] Filtered properties:', filtered.length);
   };
 
   const PropertyCard: React.FC<{ property: Property }> = ({ property }) => {
