@@ -1,6 +1,5 @@
-import { useState, useEffect } from 'react';
 import { Routes, Route, useNavigate } from 'react-router-dom';
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { Menu, X, LogOut, RefreshCw } from 'lucide-react';
 import './index.css';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
