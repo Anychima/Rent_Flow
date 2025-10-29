@@ -6,6 +6,8 @@ import { useAuth } from '../contexts/AuthContext';
 import PropertyComparisonModal from './PropertyComparisonModal';
 import { PropertyListSkeleton } from './SkeletonLoader';
 
+const API_URL = process.env.REACT_APP_BACKEND_URL || 'http://localhost:3001';
+
 interface Property {
   id: string;
   title: string;
@@ -78,7 +80,8 @@ const PublicPropertyListings: React.FC = () => {
   const fetchProperties = async () => {
     try {
       console.log('🏠 [PublicPropertyListings] Fetching properties from API...');
-      const response = await axios.get('http://localhost:3001/api/properties/public');
+      console.log('   API URL:', `${API_URL}/api/properties/public`);
+      const response = await axios.get(`${API_URL}/api/properties/public`);
       console.log('📊 [PublicPropertyListings] API Response:', response.data);
       
       if (response.data.success) {
@@ -101,7 +104,7 @@ const PublicPropertyListings: React.FC = () => {
     if (!userProfile?.id) return;
     
     try {
-      const response = await axios.get(`http://localhost:3001/api/saved-properties/user/${userProfile.id}`);
+      const response = await axios.get(`${API_URL}/api/saved-properties/user/${userProfile.id}`);
       if (response.data.success) {
         const savedIds = new Set<string>(response.data.data.map((sp: any) => sp.property_id));
         setSavedPropertyIds(savedIds);
@@ -123,14 +126,14 @@ const PublicPropertyListings: React.FC = () => {
 
     try {
       if (isSaved) {
-        await axios.delete(`http://localhost:3001/api/saved-properties/user/${userProfile.id}/property/${propertyId}`);
+        await axios.delete(`${API_URL}/api/saved-properties/user/${userProfile.id}/property/${propertyId}`);
         setSavedPropertyIds(prev => {
           const newSet = new Set(prev);
           newSet.delete(propertyId);
           return newSet;
         });
       } else {
-        await axios.post('http://localhost:3001/api/saved-properties', {
+        await axios.post(`${API_URL}/api/saved-properties`, {
           userId: userProfile.id,
           propertyId
         });
