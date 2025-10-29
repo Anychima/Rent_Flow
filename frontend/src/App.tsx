@@ -1,5 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Routes, Route, useNavigate } from 'react-router-dom';
+import React, { useState, useEffect } from 'react';
+import { Menu, X, LogOut, RefreshCw } from 'lucide-react';
 import './index.css';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { WalletProvider } from './contexts/WalletContext';
@@ -165,6 +167,7 @@ function Dashboard() {
   const [selectedApplication, setSelectedApplication] = useState<Application | null>(null);
   const [chatApplication, setChatApplication] = useState<Application | null>(null);
   const [leaseStatus, setLeaseStatus] = useState<Record<string, { exists: boolean; landlordSigned: boolean; tenantSigned: boolean; fullySigned: boolean }>>({});
+  const [showMobileMenu, setShowMobileMenu] = useState(false);
 
   useEffect(() => {
     fetchData();
@@ -729,6 +732,94 @@ function Dashboard() {
 
   return (
     <div className="min-h-screen bg-gray-50">
+      {/* Mobile Menu Overlay */}
+      {showMobileMenu && (
+        <div 
+          className="fixed inset-0 bg-black bg-opacity-50 z-40 md:hidden"
+          onClick={() => setShowMobileMenu(false)}
+        />
+      )}
+      
+      {/* Mobile Slide-out Menu */}
+      <div className={`fixed top-0 right-0 h-full w-80 bg-white shadow-2xl z-50 transform transition-transform duration-300 ease-in-out md:hidden ${
+        showMobileMenu ? 'translate-x-0' : 'translate-x-full'
+      }`}>
+        <div className="p-6">
+          {/* Close Button */}
+          <button
+            onClick={() => setShowMobileMenu(false)}
+            className="absolute top-4 right-4 p-2 hover:bg-gray-100 rounded-full transition-colors"
+          >
+            <X className="w-6 h-6" />
+          </button>
+          
+          {/* User Info */}
+          <div className="mb-8 pt-4">
+            <div className="flex items-center space-x-3 mb-4">
+              <div className="w-12 h-12 bg-gradient-to-br from-blue-500 to-purple-500 rounded-full flex items-center justify-center text-white font-bold text-lg">
+                {userProfile?.full_name?.[0] || user?.email?.[0]?.toUpperCase() || 'M'}
+              </div>
+              <div>
+                <p className="font-semibold text-gray-900">{userProfile?.full_name || 'Manager'}</p>
+                <p className="text-sm text-gray-500">{user?.email}</p>
+              </div>
+            </div>
+          </div>
+          
+          {/* Navigation Menu */}
+          <nav className="space-y-2">
+            {['dashboard', 'properties', 'applications', 'leases', 'payments', 'analytics', 'maintenance', 'notifications', 'wallet'].map((tab) => (
+              <button
+                key={tab}
+                onClick={() => {
+                  setActiveTab(tab);
+                  setShowMobileMenu(false);
+                }}
+                className={`w-full flex items-center space-x-3 px-4 py-3 rounded-lg transition-colors font-medium ${
+                  activeTab === tab
+                    ? 'bg-blue-600 text-white'
+                    : 'text-gray-700 hover:bg-blue-50 hover:text-blue-600'
+                }`}
+              >
+                <span className="text-lg">
+                  {tab === 'dashboard' && '📊'}
+                  {tab === 'properties' && '🏠'}
+                  {tab === 'applications' && '📄'}
+                  {tab === 'leases' && '📋'}
+                  {tab === 'payments' && '💳'}
+                  {tab === 'analytics' && '📈'}
+                  {tab === 'maintenance' && '🔧'}
+                  {tab === 'notifications' && '🔔'}
+                  {tab === 'wallet' && '👛'}
+                </span>
+                <span className="capitalize">{tab}</span>
+              </button>
+            ))}
+            
+            <div className="border-t border-gray-200 my-4"></div>
+            
+            <button
+              onClick={() => handleRefresh()}
+              className="w-full flex items-center space-x-3 px-4 py-3 text-gray-700 hover:bg-gray-100 rounded-lg transition-colors font-medium"
+            >
+              <RefreshCw className="w-5 h-5" />
+              <span>Refresh Data</span>
+            </button>
+            
+            <button
+              onClick={async () => {
+                await signOut();
+                setShowMobileMenu(false);
+              }}
+              className="w-full flex items-center space-x-3 px-4 py-3 text-red-600 hover:bg-red-50 rounded-lg transition-colors font-medium"
+            >
+              <LogOut className="w-5 h-5" />
+              <span>Sign Out</span>
+            </button>
+          </nav>
+        </div>
+      </div>
+      
       {/* Header */}
       <header className="bg-white shadow-sm border-b">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
@@ -738,11 +829,13 @@ function Dashboard() {
                 <span className="text-white font-bold text-xl">RF</span>
               </div>
               <div>
-                <h1 className="text-2xl font-bold text-gray-900">RentFlow AI</h1>
-                <p className="text-sm text-gray-500">Property Management on Arc</p>
+                <h1 className="text-xl sm:text-2xl font-bold text-gray-900">RentFlow AI</h1>
+                <p className="text-xs sm:text-sm text-gray-500">Property Management on Arc</p>
               </div>
             </div>
-            <div className="flex items-center space-x-2">
+            
+            {/* Desktop Menu */}
+            <div className="hidden md:flex items-center space-x-2">
               <div className="flex items-center space-x-2 px-3 py-1 bg-gray-100 rounded-lg">
                 <span className="text-sm text-gray-700">{user?.email}</span>
               </div>
@@ -767,14 +860,23 @@ function Dashboard() {
                 ● Connected
               </span>
             </div>
+            
+            {/* Mobile Hamburger Menu Button */}
+            <button
+              onClick={() => setShowMobileMenu(true)}
+              className="md:hidden p-2 hover:bg-gray-100 rounded-lg transition-colors"
+              aria-label="Open menu"
+            >
+              <Menu className="w-6 h-6 text-gray-700" />
+            </button>
           </div>
         </div>
       </header>
 
-      {/* Navigation */}
-      <nav className="bg-white border-b">
+      {/* Navigation - Hidden on mobile, visible on desktop */}
+      <nav className="bg-white border-b hidden md:block">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex space-x-8">
+          <div className="flex space-x-8 overflow-x-auto hide-scrollbar">
             {['dashboard', 'properties', 'applications', 'leases', 'payments', 'analytics', 'maintenance', 'notifications', 'wallet'].map((tab) => (
               <button
                 key={tab}
@@ -899,20 +1001,20 @@ function Dashboard() {
 
         {activeTab === 'properties' && (
           <div>
-            <div className="flex justify-between items-center mb-6">
-              <div className="flex-1">
+            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6">
+              <div className="flex-1 w-full sm:w-auto">
                 <h2 className="text-2xl font-bold text-gray-900 mb-2">Properties</h2>
                 <input
                   type="text"
                   placeholder="Search properties by name or city..."
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
-                  className="px-4 py-2 border border-gray-300 rounded-lg w-96 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full sm:w-96 px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                 />
               </div>
               <button
                 onClick={handleAddProperty}
-                className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+                className="w-full sm:w-auto px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
               >
                 + Add Property
               </button>
