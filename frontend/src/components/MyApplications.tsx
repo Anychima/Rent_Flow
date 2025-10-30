@@ -59,7 +59,7 @@ const MyApplications: React.FC = () => {
     
     for (const app of approvedApps) {
       try {
-        const response = await fetch(`http://localhost:3001/api/leases/by-application/${app.id}`);
+        const response = await fetch(`${API_URL}/api/leases/by-application/${app.id}`);
         const result = await response.json();
         
         if (result.success && result.data) {
@@ -87,7 +87,7 @@ const MyApplications: React.FC = () => {
       setLoading(true);
       console.log('🔍 Fetching applications for user:', userProfile?.id);
       
-      const response = await fetch(`http://localhost:3001/api/applications/my-applications?user_id=${userProfile?.id}`);
+      const response = await fetch(`${API_URL}/api/applications/my-applications?user_id=${userProfile?.id}`);
       const result = await response.json();
 
       console.log('📥 Applications response:', result);

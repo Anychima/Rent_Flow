@@ -162,7 +162,7 @@ const LeaseReviewPage: React.FC = () => {
       console.log('   Explorer:', `https://testnet.arcscan.app/tx/${result.transactionHash}`);
 
       // Update lease in database with transaction hash
-      const response = await axios.post(`http://localhost:3001/api/leases/${lease.id}/sign`, {
+      const response = await axios.post(`https://rent-flow.onrender.com/api/leases/${lease.id}/sign`, {
         signer_id: userProfile!.id,
         signature: result.transactionHash, // Store tx hash instead of signature
         signer_type: 'landlord',
@@ -201,7 +201,7 @@ const LeaseReviewPage: React.FC = () => {
   const fetchLease = async () => {
     try {
       setLoading(true);
-      const response = await axios.get(`http://localhost:3001/api/leases/${id}`);
+      const response = await axios.get(`https://rent-flow.onrender.com/api/leases/${id}`);
       
       if (response.data.success) {
         const leaseData = response.data.data;
@@ -248,7 +248,7 @@ const LeaseReviewPage: React.FC = () => {
       }
 
       // Update lease
-      const response = await axios.put(`http://localhost:3001/api/leases/${id}`, {
+      const response = await axios.put(`https://rent-flow.onrender.com/api/leases/${id}`, {
         monthly_rent_usdc: monthlyRent,
         security_deposit_usdc: securityDeposit,
         rent_due_day: rentDueDay,
@@ -303,7 +303,7 @@ const LeaseReviewPage: React.FC = () => {
       console.log('📧 [Send Lease] Sending lease to tenant...');
 
       // Update lease status to pending_tenant
-      const response = await axios.put(`http://localhost:3001/api/leases/${id}`, {
+      const response = await axios.put(`https://rent-flow.onrender.com/api/leases/${id}`, {
         lease_status: 'pending_tenant',
         status: 'pending',
         sent_to_tenant_at: new Date().toISOString()

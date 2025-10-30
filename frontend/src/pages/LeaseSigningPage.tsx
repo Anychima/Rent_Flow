@@ -96,7 +96,7 @@ const LeaseSigningPage: React.FC = () => {
       
       // The id from the URL is actually the application_id
       // First, get the lease by application_id
-      const response = await axios.get(`http://localhost:3001/api/leases/by-application/${id}`);
+      const response = await axios.get(`https://rent-flow.onrender.com/api/leases/by-application/${id}`);
       
       if (response.data.success && response.data.data) {
         const leaseData = response.data.data;
@@ -240,7 +240,7 @@ const LeaseSigningPage: React.FC = () => {
       console.log('   Explorer:', `https://testnet.arcscan.app/tx/${result.transactionHash}`);
 
       // Update lease in database with transaction hash
-      const response = await axios.post(`http://localhost:3001/api/leases/${lease.id}/sign`, {
+      const response = await axios.post(`https://rent-flow.onrender.com/api/leases/${lease.id}/sign`, {
         signer_id: userProfile!.id,
         signature: result.transactionHash, // Store tx hash instead of signature
         signer_type: 'tenant',

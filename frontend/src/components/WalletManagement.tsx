@@ -3,7 +3,7 @@ import { Wallet, Plus, Trash2, CheckCircle, AlertCircle, Star, Copy } from 'luci
 import axios from 'axios';
 import WalletConnectionModal from './WalletConnectionModal';
 
-const API_URL = process.env.REACT_APP_BACKEND_URL || 'http://localhost:3001';
+const API_URL = process.env.REACT_APP_BACKEND_URL || 'https://rent-flow.onrender.com';
 
 interface WalletItem {
   id: string;

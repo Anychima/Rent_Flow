@@ -34,7 +34,7 @@ interface LeaseFormProps {
   onSubmit: (lease: Partial<Lease>) => Promise<void>;
 }
 
-const API_URL = process.env.REACT_APP_BACKEND_URL || 'http://localhost:3001';
+const API_URL = process.env.REACT_APP_BACKEND_URL || 'https://rent-flow.onrender.com';
 
 export default function LeaseForm({ lease, onClose, onSubmit }: LeaseFormProps) {
   const [loading, setLoading] = useState(false);

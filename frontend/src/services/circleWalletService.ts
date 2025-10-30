@@ -3,7 +3,7 @@
  * Uses Circle Developer Controlled Wallets instead of Phantom
  */
 
-const API_URL = process.env.REACT_APP_BACKEND_URL || 'http://localhost:3001';
+const API_URL = process.env.REACT_APP_BACKEND_URL || 'https://rent-flow.onrender.com';
 
 interface CircleWallet {
   walletId: string;

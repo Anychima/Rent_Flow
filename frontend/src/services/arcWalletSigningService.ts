@@ -127,7 +127,7 @@ async function signWithCircleWallet(
     console.log('   Address:', walletInfo.address);
 
     // Call Circle API to sign message
-    const response = await fetch('http://localhost:3001/api/arc/sign-message', {
+    const response = await fetch('https://rent-flow.onrender.com/api/arc/sign-message', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({

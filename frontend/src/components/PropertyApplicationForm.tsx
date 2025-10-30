@@ -73,7 +73,7 @@ const PropertyApplicationForm: React.FC = () => {
   useEffect(() => {
     const fetchProperty = async () => {
       try {
-        const response = await fetch(`http://localhost:3001/api/properties/${id}`);
+        const response = await fetch(`${API_URL}/api/properties/${id}`);
         const result = await response.json();
         
         if (result.success) {
@@ -204,7 +204,7 @@ const PropertyApplicationForm: React.FC = () => {
 
       console.log('Submitting application:', applicationData);
 
-      const response = await fetch('http://localhost:3001/api/applications', {
+      const response = await fetch(`${API_URL}/api/applications`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

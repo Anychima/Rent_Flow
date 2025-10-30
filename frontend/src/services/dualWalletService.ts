@@ -57,7 +57,7 @@ export async function connectPhantomWallet(userId?: string, role?: 'manager' | '
     // Save to backend if userId provided
     if (userId) {
       try {
-        await fetch('http://localhost:3001/api/wallet/phantom/connect', {
+        await fetch('https://rent-flow.onrender.com/api/wallet/phantom/connect', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ userId, address, role })

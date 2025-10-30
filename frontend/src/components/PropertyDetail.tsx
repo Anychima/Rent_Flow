@@ -58,7 +58,7 @@ const PropertyDetail: React.FC = () => {
 
   const fetchPropertyDetails = async () => {
     try {
-      const response = await axios.get(`http://localhost:3001/api/properties/${id}`);
+      const response = await axios.get(`${API_URL}/api/properties/${id}`);
       if (response.data.success) {
         setProperty(response.data.data);
       }
@@ -71,7 +71,7 @@ const PropertyDetail: React.FC = () => {
 
   const incrementViewCount = async () => {
     try {
-      await axios.post(`http://localhost:3001/api/properties/${id}/view`);
+      await axios.post(`${API_URL}/api/properties/${id}/view`);
     } catch (error) {
       console.error('Error incrementing view count:', error);
     }
@@ -96,13 +96,13 @@ const PropertyDetail: React.FC = () => {
     try {
       if (isSaved) {
         // Unsave property
-        await axios.delete(`http://localhost:3001/api/saved-properties/${id}`, {
+        await axios.delete(`${API_URL}/api/saved-properties/${id}`, {
           params: { user_id: user.id }
         });
         setIsSaved(false);
       } else {
         // Save property (use camelCase to match backend)
-        await axios.post('http://localhost:3001/api/saved-properties', {
+        await axios.post(`${API_URL}/api/saved-properties`, {
           userId: user.id,
           propertyId: id
         });

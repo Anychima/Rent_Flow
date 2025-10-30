@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { X, Wallet, ArrowRight, AlertCircle, CheckCircle, Loader } from 'lucide-react';
 import axios from 'axios';
 
-const API_URL = process.env.REACT_APP_BACKEND_URL || 'http://localhost:3001';
+const API_URL = process.env.REACT_APP_BACKEND_URL || 'https://rent-flow.onrender.com';
 
 interface WalletConnectionModalProps {
   userId: string;

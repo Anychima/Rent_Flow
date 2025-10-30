@@ -91,7 +91,7 @@ async function signWithCircleWallet(
     console.log('   Lease ID:', leaseInfo.leaseId);
 
     // Call backend to execute contract transaction
-    const response = await fetch('http://localhost:3001/api/arc/sign-lease-contract', {
+    const response = await fetch('https://rent-flow.onrender.com/api/arc/sign-lease-contract', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({

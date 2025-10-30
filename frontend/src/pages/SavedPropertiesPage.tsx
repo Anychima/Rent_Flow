@@ -44,7 +44,7 @@ const SavedPropertiesPage: React.FC = () => {
     if (!userProfile?.id) return;
 
     try {
-      const response = await axios.get(`http://localhost:3001/api/saved-properties/user/${userProfile.id}`);
+      const response = await axios.get(`https://rent-flow.onrender.com/api/saved-properties/user/${userProfile.id}`);
       if (response.data.success) {
         setSavedProperties(response.data.data);
       }
@@ -57,7 +57,7 @@ const SavedPropertiesPage: React.FC = () => {
 
   const removeSavedProperty = async (savedId: string) => {
     try {
-      await axios.delete(`http://localhost:3001/api/saved-properties/${savedId}`);
+      await axios.delete(`https://rent-flow.onrender.com/api/saved-properties/${savedId}`);
       setSavedProperties(savedProperties.filter(sp => sp.id !== savedId));
     } catch (error) {
       console.error('Error removing saved property:', error);

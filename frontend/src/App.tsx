@@ -134,7 +134,7 @@ interface Application {
   manager_notes?: string;
 }
 
-const API_URL = process.env.REACT_APP_BACKEND_URL || 'http://localhost:3001';
+const API_URL = process.env.REACT_APP_BACKEND_URL || 'https://rent-flow.onrender.com';
 
 function Dashboard() {
   const { user, userProfile, signOut } = useAuth();

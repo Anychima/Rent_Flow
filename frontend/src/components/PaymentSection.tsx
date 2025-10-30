@@ -2,7 +2,7 @@ import { CheckCircle, DollarSign, Loader, AlertCircle } from 'lucide-react';
 import axios from 'axios';
 import { useState, useEffect } from 'react';
 
-const API_URL = process.env.REACT_APP_BACKEND_URL || 'http://localhost:3001';
+const API_URL = process.env.REACT_APP_BACKEND_URL || 'https://rent-flow.onrender.com';
 
 interface Payment {
   id: string;

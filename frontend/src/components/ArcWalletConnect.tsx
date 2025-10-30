@@ -36,7 +36,7 @@ const ArcWalletConnect: React.FC<ArcWalletConnectProps> = ({
 
   const fetchBalance = async (wId: string) => {
     try {
-      const response = await axios.get(`http://localhost:3001/api/arc/wallet/${wId}/balance`);
+      const response = await axios.get(`${API_URL}/api/arc/wallet/${wId}/balance`);
       if (response.data.success) {
         setBalance(response.data.data.usdcBalance || '0');
       }
@@ -58,7 +58,7 @@ const ArcWalletConnect: React.FC<ArcWalletConnectProps> = ({
     try {
       console.log('🎯 Creating new Arc Testnet wallet...');
       
-      const response = await axios.post('http://localhost:3001/api/arc/wallet/create', {
+      const response = await axios.post(`${API_URL}/api/arc/wallet/create`, {
         userId: userProfile.id,
         userEmail: userProfile.email
       });
