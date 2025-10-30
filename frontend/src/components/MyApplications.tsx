@@ -3,6 +3,8 @@ import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import ChatBox from './ChatBox';
 
+const API_URL = process.env.REACT_APP_BACKEND_URL || 'http://localhost:3001';
+
 interface Property {
   id: string;
   owner_id?: string;

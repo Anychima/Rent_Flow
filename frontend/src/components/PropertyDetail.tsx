@@ -10,6 +10,8 @@ import axios from 'axios';
 import { useAuth } from '../contexts/AuthContext';
 import AuthWall from './AuthWall';
 
+const API_URL = process.env.REACT_APP_BACKEND_URL || 'http://localhost:3001';
+
 interface Property {
   id: string;
   title: string;

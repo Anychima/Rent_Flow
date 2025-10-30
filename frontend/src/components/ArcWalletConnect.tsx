@@ -3,6 +3,8 @@ import { Wallet, Plus, RefreshCw, Copy, CheckCircle, AlertCircle, Loader } from 
 import axios from 'axios';
 import { useAuth } from '../contexts/AuthContext';
 
+const API_URL = process.env.REACT_APP_BACKEND_URL || 'http://localhost:3001';
+
 interface ArcWalletConnectProps {
   onWalletConnected?: (address: string, walletId: string) => void;
   showBalance?: boolean;
