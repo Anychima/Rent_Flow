@@ -25,3 +25,5 @@
   DISABLE_ESLINT_PLUGIN = "true"
   # Skip source map generation for faster builds
   GENERATE_SOURCEMAP = "false"
+  # Backend API URL for production
+  REACT_APP_BACKEND_URL = "https://rent-flow.onrender.com"
