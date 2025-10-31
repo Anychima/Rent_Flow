@@ -1159,6 +1159,13 @@ app.post('/api/leases/:id/sign',
       updateData.landlord_signed_at = now;
       updateData.landlord_signature_date = now;
       
+      // Save manager/landlord wallet address for payments
+      if (wallet_address) {
+        updateData.manager_wallet_address = wallet_address;
+        updateData.landlord_wallet = wallet_address; // Alias for compatibility
+        logger.info('Saving landlord wallet to lease', { wallet_address }, 'LEASE_SIGNING');
+      }
+      
       // Update lease status
       if (currentLease.tenant_signature || currentLease.tenant_signed_at) {
         updateData.lease_status = 'fully_signed';
@@ -1175,6 +1182,12 @@ app.post('/api/leases/:id/sign',
       updateData.tenant_signature = signature;
       updateData.tenant_signed_at = now;
       updateData.tenant_signature_date = now;
+      
+      // Save tenant wallet address
+      if (wallet_address) {
+        updateData.tenant_wallet_address = wallet_address;
+        logger.info('Saving tenant wallet to lease', { wallet_address }, 'LEASE_SIGNING');
+      }
       
       // Update lease status
       if (currentLease.landlord_signature || currentLease.landlord_signed_at) {
