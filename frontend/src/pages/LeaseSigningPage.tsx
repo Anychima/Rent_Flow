@@ -74,6 +74,15 @@ const LeaseSigningPage: React.FC = () => {
       }
     }
 
+    // Also check if wallet is in user profile
+    if (!savedWalletInfo && userProfile?.wallet_address) {
+      console.log('✅ [Wallet] Loading from user profile:', userProfile.wallet_address);
+      setArcWalletAddress(userProfile.wallet_address);
+      setArcWalletId(userProfile.circle_wallet_id || '');
+      setArcWalletType('circle');
+      setArcWalletConnected(true);
+    }
+
     fetchLease();
   }, [id, user, userProfile?.id]); // Added userProfile?.id to re-fetch when profile loads
 
@@ -82,13 +91,46 @@ const LeaseSigningPage: React.FC = () => {
     console.log('🔍 [Wallet State Debug]', {
       arcWalletAddress,
       arcWalletConnected,
+      arcWalletId,
       userProfileWalletAddress: userProfile?.wallet_address,
       showPayments,
       hasPaymentInfo: !!paymentInfo,
       leaseStatus: lease?.lease_status,
-      userRole: userProfile?.role
+      userRole: userProfile?.role,
+      localStorage: localStorage.getItem('rentflow_wallet') ? 'HAS DATA' : 'EMPTY'
     });
-  }, [arcWalletAddress, arcWalletConnected, userProfile?.wallet_address, showPayments, paymentInfo, lease?.lease_status, userProfile?.role]);
+
+    // If wallet is not detected but should be, try to reload it
+    if (!arcWalletAddress && showPayments && paymentInfo) {
+      console.log('⚠️ [Wallet] Payments need wallet but none detected, attempting to reload...');
+      
+      // Try localStorage first
+      const savedWallet = localStorage.getItem('rentflow_wallet');
+      if (savedWallet) {
+        try {
+          const walletData = JSON.parse(savedWallet);
+          if (walletData.address) {
+            console.log('✅ [Wallet] Recovered from localStorage');
+            setArcWalletAddress(walletData.address);
+            setArcWalletId(walletData.walletId || '');
+            setArcWalletType(walletData.type || 'circle');
+            setArcWalletConnected(true);
+          }
+        } catch (e) {
+          console.error('Failed to parse wallet from localStorage:', e);
+        }
+      }
+      
+      // Try user profile as fallback
+      if (!savedWallet && userProfile?.wallet_address) {
+        console.log('✅ [Wallet] Recovered from user profile');
+        setArcWalletAddress(userProfile.wallet_address);
+        setArcWalletId(userProfile.circle_wallet_id || '');
+        setArcWalletType('circle');
+        setArcWalletConnected(true);
+      }
+    }
+  }, [arcWalletAddress, arcWalletConnected, userProfile?.wallet_address, showPayments, paymentInfo, lease?.lease_status, userProfile?.role, arcWalletId]);
 
   const fetchLease = async () => {
     try {
