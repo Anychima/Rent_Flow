@@ -1019,6 +1019,22 @@ app.post('/api/leases/:id/sign',
       blockchain_hash: blockchain_tx_hash || 'pending'
     }, 'LEASE_SIGNING');
 
+    // Save wallet address to user profile if provided
+    if (wallet_address && signer_id) {
+      logger.info('Saving wallet address to user profile', { user_id: signer_id, wallet_address }, 'LEASE_SIGNING');
+      
+      const { error: walletUpdateError } = await supabase
+        .from('users')
+        .update({ wallet_address })
+        .eq('id', signer_id);
+
+      if (walletUpdateError) {
+        logger.warn('Failed to save wallet address to user profile', walletUpdateError, 'LEASE_SIGNING');
+      } else {
+        logger.success('Wallet address saved to user profile', { user_id: signer_id }, 'LEASE_SIGNING');
+      }
+    }
+
     // Check if lease is now fully signed and requires payment
     const requiresPayment = updateData.lease_status === 'fully_signed' && signer_type === 'tenant';
     let paymentInfo = null;
