@@ -923,6 +923,52 @@ app.put('/api/leases/:id',
   })
 );
 
+// Connect/save wallet to user profile
+app.post('/api/users/:userId/wallets',
+  validateParams({
+    userId: { type: 'uuid', required: true }
+  }),
+  validateBody({
+    walletAddress: { type: 'string', required: true },
+    walletType: { type: 'string', required: true, enum: ['circle', 'external'] },
+    walletId: { type: 'string', required: false }
+  }),
+  asyncHandler(async (req: Request, res: Response) => {
+    const { userId } = req.params;
+    const { walletAddress, walletType, walletId } = req.body;
+
+    logger.info('Saving wallet to user profile', { userId, walletType, walletAddress }, 'WALLET');
+
+    // Update user's wallet_address in profile
+    const { data: userData, error: updateError } = await supabase
+      .from('users')
+      .update({ 
+        wallet_address: walletAddress,
+        circle_wallet_id: walletType === 'circle' ? walletId : null
+      })
+      .eq('id', userId)
+      .select()
+      .single();
+
+    if (updateError) {
+      logger.error('Failed to save wallet to user profile', updateError, 'WALLET');
+      throw ApiErrors.internal('Failed to save wallet');
+    }
+
+    logger.success('Wallet saved to user profile', { userId }, 'WALLET');
+
+    res.json({ 
+      success: true, 
+      data: {
+        walletAddress,
+        walletType,
+        walletId,
+        user: userData
+      }
+    });
+  })
+);
+
 // Sign lease endpoint - stores blockchain transaction hash
 app.post('/api/leases/:id/sign',
   validateParams({
