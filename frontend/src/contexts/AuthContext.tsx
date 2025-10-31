@@ -114,24 +114,34 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         return null;
       }
       
-      console.log('[AuthContext] Profile found by email:', emailData.email, 'Role:', emailData.role);
+      console.log('[AuthContext] Profile found by email:', emailData.email, 'Role:', emailData.role, 'Wallet:', emailData.wallet_address || 'NULL');
       
       // Sync wallet from user_wallets table if wallet_address is null
       if (!emailData.wallet_address) {
-        console.log('[AuthContext] User has no wallet_address, checking user_wallets table...');
+        console.log('🔄 [AuthContext] User has no wallet_address, checking user_wallets table...');
         try {
           const walletResponse = await fetch(`${process.env.REACT_APP_BACKEND_URL || 'https://rent-flow.onrender.com'}/api/users/${emailData.id}/primary-wallet`);
+          console.log('🔄 [AuthContext] Wallet sync response status:', walletResponse.status);
+          
           if (walletResponse.ok) {
             const walletData = await walletResponse.json();
+            console.log('🔄 [AuthContext] Wallet sync response:', walletData);
+            
             if (walletData.success && walletData.data) {
-              console.log('[AuthContext] Found primary wallet, syncing to profile:', walletData.data.wallet_address);
+              console.log('✅ [AuthContext] Found primary wallet, syncing to profile:', walletData.data.wallet_address);
               emailData.wallet_address = walletData.data.wallet_address;
               emailData.circle_wallet_id = walletData.data.circle_wallet_id;
+            } else {
+              console.log('⚠️ [AuthContext] No primary wallet found in user_wallets table');
             }
+          } else {
+            console.error('❌ [AuthContext] Wallet sync request failed:', walletResponse.status, await walletResponse.text());
           }
         } catch (err) {
-          console.error('[AuthContext] Error syncing wallet:', err);
+          console.error('❌ [AuthContext] Error syncing wallet:', err);
         }
+      } else {
+        console.log('✅ [AuthContext] User already has wallet_address:', emailData.wallet_address);
       }
       
       return emailData as UserProfile;
