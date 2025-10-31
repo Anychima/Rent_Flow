@@ -49,7 +49,7 @@ export default function PaymentSection({
       setLoading(true);
       console.log('💰 [PaymentSection] Fetching payments for lease:', leaseId);
       
-      const response = await axios.get(`${API_URL}/api/leases/${leaseId}/payments`);
+      const response = await axios.get(`${API_URL}/api/payments/lease/${leaseId}`);
       
       console.log('📊 [PaymentSection] Payments API response:', response.data);
       
