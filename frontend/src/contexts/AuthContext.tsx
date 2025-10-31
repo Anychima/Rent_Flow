@@ -115,6 +115,25 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
       
       console.log('[AuthContext] Profile found by email:', emailData.email, 'Role:', emailData.role);
+      
+      // Sync wallet from user_wallets table if wallet_address is null
+      if (!emailData.wallet_address) {
+        console.log('[AuthContext] User has no wallet_address, checking user_wallets table...');
+        try {
+          const walletResponse = await fetch(`${process.env.REACT_APP_BACKEND_URL || 'https://rent-flow.onrender.com'}/api/users/${emailData.id}/primary-wallet`);
+          if (walletResponse.ok) {
+            const walletData = await walletResponse.json();
+            if (walletData.success && walletData.data) {
+              console.log('[AuthContext] Found primary wallet, syncing to profile:', walletData.data.wallet_address);
+              emailData.wallet_address = walletData.data.wallet_address;
+              emailData.circle_wallet_id = walletData.data.circle_wallet_id;
+            }
+          }
+        } catch (err) {
+          console.error('[AuthContext] Error syncing wallet:', err);
+        }
+      }
+      
       return emailData as UserProfile;
     } catch (err) {
       console.error('[AuthContext] Error fetching profile:', err instanceof Error ? err.message : String(err));

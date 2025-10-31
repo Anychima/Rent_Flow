@@ -923,6 +923,95 @@ app.put('/api/leases/:id',
   })
 );
 
+// Get user's primary wallet and sync to profile
+app.get('/api/users/:userId/primary-wallet',
+  validateParams({
+    userId: { type: 'uuid', required: true }
+  }),
+  asyncHandler(async (req: Request, res: Response) => {
+    const { userId } = req.params;
+
+    logger.info('Getting user primary wallet', { userId }, 'WALLET');
+
+    // Get primary wallet from user_wallets table
+    const { data: primaryWallet, error: walletError } = await supabase
+      .from('user_wallets')
+      .select('*')
+      .eq('user_id', userId)
+      .eq('is_primary', true)
+      .maybeSingle();
+
+    if (walletError) {
+      logger.error('Error fetching primary wallet', walletError, 'WALLET');
+      throw ApiErrors.internal('Failed to fetch wallet');
+    }
+
+    if (!primaryWallet) {
+      // No primary wallet - check if there's any wallet
+      const { data: anyWallet } = await supabase
+        .from('user_wallets')
+        .select('*')
+        .eq('user_id', userId)
+        .limit(1)
+        .maybeSingle();
+
+      if (anyWallet) {
+        // Set this as primary
+        await supabase
+          .from('user_wallets')
+          .update({ is_primary: true })
+          .eq('id', anyWallet.id);
+
+        // Update user profile
+        await supabase
+          .from('users')
+          .update({
+            wallet_address: anyWallet.wallet_address,
+            circle_wallet_id: anyWallet.circle_wallet_id
+          })
+          .eq('id', userId);
+
+        logger.success('Set first wallet as primary and synced to profile', { userId }, 'WALLET');
+
+        return res.json({
+          success: true,
+          data: anyWallet
+        });
+      }
+
+      // No wallets at all
+      return res.json({
+        success: true,
+        data: null
+      });
+    }
+
+    // Sync primary wallet to user profile if not already
+    const { data: currentUser } = await supabase
+      .from('users')
+      .select('wallet_address')
+      .eq('id', userId)
+      .single();
+
+    if (currentUser && currentUser.wallet_address !== primaryWallet.wallet_address) {
+      logger.info('Syncing primary wallet to user profile', { userId, wallet: primaryWallet.wallet_address }, 'WALLET');
+      
+      await supabase
+        .from('users')
+        .update({
+          wallet_address: primaryWallet.wallet_address,
+          circle_wallet_id: primaryWallet.circle_wallet_id
+        })
+        .eq('id', userId);
+    }
+
+    res.json({
+      success: true,
+      data: primaryWallet
+    });
+  })
+);
+
 // Connect/save wallet to user profile
 app.post('/api/users/:userId/wallets',
   validateParams({
@@ -938,6 +1027,66 @@ app.post('/api/users/:userId/wallets',
     const { walletAddress, walletType, walletId } = req.body;
 
     logger.info('Saving wallet to user profile', { userId, walletType, walletAddress }, 'WALLET');
+
+    // Check if wallet already exists in user_wallets table
+    const { data: existingWallet } = await supabase
+      .from('user_wallets')
+      .select('*')
+      .eq('user_id', userId)
+      .eq('wallet_address', walletAddress)
+      .maybeSingle();
+
+    if (existingWallet) {
+      logger.info('Wallet already exists in user_wallets, updating user profile', { userId }, 'WALLET');
+      
+      // Wallet exists - just update user profile to use it
+      const { data: userData, error: updateError } = await supabase
+        .from('users')
+        .update({ 
+          wallet_address: walletAddress,
+          circle_wallet_id: walletType === 'circle' ? walletId : null
+        })
+        .eq('id', userId)
+        .select()
+        .single();
+
+      if (updateError) {
+        logger.error('Failed to update user profile with existing wallet', updateError, 'WALLET');
+        throw ApiErrors.internal('Failed to save wallet');
+      }
+
+      logger.success('User profile updated with existing wallet', { userId }, 'WALLET');
+
+      return res.json({ 
+        success: true, 
+        data: {
+          walletAddress,
+          walletType,
+          walletId,
+          user: userData,
+          existingWallet: true
+        }
+      });
+    }
+
+    // Wallet doesn't exist - create it and update user profile
+    const { data: newWallet, error: walletInsertError } = await supabase
+      .from('user_wallets')
+      .insert({
+        user_id: userId,
+        wallet_address: walletAddress,
+        wallet_type: walletType,
+        circle_wallet_id: walletType === 'circle' ? walletId : null,
+        is_primary: true,
+        label: walletType === 'circle' ? 'Circle Wallet' : 'External Wallet'
+      })
+      .select()
+      .single();
+
+    if (walletInsertError) {
+      logger.error('Failed to insert wallet into user_wallets', walletInsertError, 'WALLET');
+      // Continue anyway - at least update user profile
+    }
 
     // Update user's wallet_address in profile
     const { data: userData, error: updateError } = await supabase
@@ -955,7 +1104,7 @@ app.post('/api/users/:userId/wallets',
       throw ApiErrors.internal('Failed to save wallet');
     }
 
-    logger.success('Wallet saved to user profile', { userId }, 'WALLET');
+    logger.success('Wallet saved to user profile and user_wallets', { userId }, 'WALLET');
 
     res.json({ 
       success: true, 
@@ -963,7 +1112,8 @@ app.post('/api/users/:userId/wallets',
         walletAddress,
         walletType,
         walletId,
-        user: userData
+        user: userData,
+        wallet: newWallet
       }
     });
   })
