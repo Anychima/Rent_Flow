@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
+import { useWallet } from '../contexts/WalletContext';
 import LeaseDocument from '../components/LeaseDocument';
 import PaymentSection from '../components/PaymentSection';
 import WalletConnectionModal from '../components/WalletConnectionModal';
@@ -33,19 +34,22 @@ const LeaseSigningPage: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const { user, userProfile, refreshUserProfile } = useAuth();
+  const { walletAddress: contextWalletAddress, walletId: contextWalletId, walletType: contextWalletType, isConnected: contextIsConnected, connectWallet: saveToContext } = useWallet();
 
   const [lease, setLease] = useState<Lease | null>(null);
   const [loading, setLoading] = useState(true);
   const [signing, setSigning] = useState(false);
-  const [arcWalletAddress, setArcWalletAddress] = useState<string>('');
-  const [arcWalletId, setArcWalletId] = useState<string>('');
-  const [arcWalletType, setArcWalletType] = useState<'circle' | 'external'>('circle');
-  const [arcWalletConnected, setArcWalletConnected] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
   const [showPayments, setShowPayments] = useState(false);
   const [paymentInfo, setPaymentInfo] = useState<any>(null);
   const [showWalletModal, setShowWalletModal] = useState(false);
+
+  // Use wallet from context instead of local state
+  const arcWalletAddress = contextWalletAddress;
+  const arcWalletId = contextWalletId;
+  const arcWalletType = contextWalletType;
+  const arcWalletConnected = contextIsConnected;
 
   useEffect(() => {
     if (!user) {
@@ -53,34 +57,8 @@ const LeaseSigningPage: React.FC = () => {
       return;
     }
 
-    // Load wallet info from localStorage if available
-    const savedWalletInfo = localStorage.getItem('rentflow_wallet');
-    if (savedWalletInfo) {
-      try {
-        const walletData = JSON.parse(savedWalletInfo);
-        if (walletData.address) {
-          console.log('✅ [Initial Load] Loading wallet from localStorage');
-          setArcWalletAddress(walletData.address);
-          setArcWalletId(walletData.walletId || '');
-          setArcWalletType(walletData.type || 'external');
-          setArcWalletConnected(true);
-        }
-      } catch (err) {
-        console.error('Failed to parse saved wallet info:', err);
-      }
-    }
-
-    // Also check if wallet is in user profile
-    if (!savedWalletInfo && userProfile?.wallet_address) {
-      console.log('✅ [Initial Load] Loading wallet from user profile:', userProfile.wallet_address);
-      setArcWalletAddress(userProfile.wallet_address);
-      setArcWalletId(userProfile.circle_wallet_id || '');
-      setArcWalletType('circle');
-      setArcWalletConnected(true);
-    }
-
     fetchLease();
-  }, [id, user]); // Simplified dependencies - only refetch on id or user change
+  }, [id, user]); // Wallet is loaded by WalletContext - no need to load here
 
   // Debug: Log wallet connection state
   useEffect(() => {
@@ -192,20 +170,8 @@ const LeaseSigningPage: React.FC = () => {
     // Determine wallet type based on whether walletId is provided
     const walletType: 'circle' | 'external' = walletId ? 'circle' : 'external';
     
-    setArcWalletId(walletId);
-    setArcWalletAddress(walletAddress);
-    setArcWalletType(walletType);
-    setArcWalletConnected(true);
-    
-    // Save to localStorage for persistence across pages
-    const walletInfo = {
-      address: walletAddress,
-      walletId: walletId || null,
-      type: walletType,
-      connectedAt: new Date().toISOString()
-    };
-    localStorage.setItem('rentflow_wallet', JSON.stringify(walletInfo));
-    console.log('💾 [Wallet] Saved to localStorage:', walletInfo);
+    // Save to WalletContext (which also saves to localStorage)
+    saveToContext(walletAddress, walletId, walletType);
     
     // Show appropriate message based on wallet type
     if (walletType === 'circle') {
