@@ -449,94 +449,90 @@ const LeaseSigningPage: React.FC = () => {
           </div>
         )}
 
-        {/* Payment Section - Show ONLY when fully signed AND user is prospective_tenant */}
-        {showPayments && paymentInfo && arcWalletAddress ? (
-          <div className="bg-white rounded-2xl shadow-xl p-8 border-2 border-blue-200">
-            <div className="mb-6">
-              <h3 className="text-2xl font-bold text-gray-900 mb-2">Complete Required Payments</h3>
-              <div className="flex items-center gap-3">
-                <CheckCircle className="w-5 h-5 text-green-600" />
-                <p className="text-sm text-gray-700">
-                  Your Arc wallet is connected. You can now complete your payments below.
-                </p>
-              </div>
-
-              {arcWalletAddress && (
-                <div className="mt-4 p-4 bg-gradient-to-r from-blue-50 to-indigo-50 rounded-xl border-2 border-blue-200">
-                  <div className="grid grid-cols-2 gap-4">
-                    <div>
-                      <p className="text-xs font-medium text-gray-600 mb-1">
-                        Arc Wallet Address
-                      </p>
-                      <p className="font-mono text-sm text-gray-900">
-                        {arcWalletAddress.substring(0, 12)}...{arcWalletAddress.substring(arcWalletAddress.length - 8)}
-                      </p>
-                    </div>
-                    <div>
-                      <p className="text-xs font-medium text-gray-600 mb-1 flex items-center gap-1">
-                        <span className="w-2 h-2 bg-blue-600 rounded-full"></span>
-                        Arc Wallet (Circle)
-                      </p>
-                    </div>
-                  </div>
-                </div>
-              )}
-            </div>
-
-            {!arcWalletAddress && (
-              <div className="p-6 bg-yellow-50 border-2 border-yellow-200 rounded-lg mb-6">
-                <div className="flex items-start gap-3">
-                  <AlertCircle className="w-6 h-6 text-yellow-600 flex-shrink-0 mt-0.5" />
-                  <div>
-                    <h4 className="font-semibold text-yellow-900 mb-1">Wallet Connection Required</h4>
-                    <p className="text-sm text-yellow-800">
-                      Please connect your Arc wallet above to enable payment processing.
-                    </p>
-                  </div>
-                </div>
-              </div>
-            )}
-
-            <PaymentSection
-              leaseId={lease.id}
-              walletConnected={!!arcWalletAddress}
-              walletAddress={arcWalletAddress}
-              walletId={arcWalletId}
-              walletType="circle"
-              onPaymentComplete={async () => {
-                console.log('🎉 [Payment Complete] All payments finished, refreshing user profile...');
-                
-                // Force refresh to get updated tenant role
-                await refreshUserProfile();
-                
-                // Redirect to dashboard after brief delay
-                setTimeout(() => {
-                  window.location.href = '/';
-                }, 3000);
-              }}
-            />
-          </div>
-        ) : (
-          showPayments && paymentInfo && (
-            <div className="p-6 bg-yellow-50 border-2 border-yellow-200 rounded-lg">
-              <div className="flex items-start gap-3">
-                <AlertCircle className="w-6 h-6 text-yellow-600 flex-shrink-0 mt-0.5" />
-                <div>
-                  <h4 className="font-semibold text-yellow-900 mb-1">Wallet Connection Required</h4>
-                  <p className="text-sm text-yellow-800 mb-3">
-                    Please connect your Arc wallet to proceed with payment.
+        {/* Payment Section - Show when fully signed, even without wallet (show wallet prompt) */}
+        {showPayments && paymentInfo ? (
+          arcWalletAddress ? (
+            <div className="bg-white rounded-2xl shadow-xl p-8 border-2 border-blue-200">
+              <div className="mb-6">
+                <h3 className="text-2xl font-bold text-gray-900 mb-2">Complete Required Payments</h3>
+                <div className="flex items-center gap-3">
+                  <CheckCircle className="w-5 h-5 text-green-600" />
+                  <p className="text-sm text-gray-700">
+                    Your Arc wallet is connected. You can now complete your payments below.
                   </p>
-                  <button
-                    onClick={connectArcWallet}
-                    className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium"
-                  >
-                    Connect Arc Wallet
-                  </button>
+                </div>
+
+                {arcWalletAddress && (
+                  <div className="mt-4 p-4 bg-gradient-to-r from-blue-50 to-indigo-50 rounded-xl border-2 border-blue-200">
+                    <div className="grid grid-cols-2 gap-4">
+                      <div>
+                        <p className="text-xs font-medium text-gray-600 mb-1">
+                          Arc Wallet Address
+                        </p>
+                        <p className="font-mono text-sm text-gray-900">
+                          {arcWalletAddress.substring(0, 12)}...{arcWalletAddress.substring(arcWalletAddress.length - 8)}
+                        </p>
+                      </div>
+                      <div>
+                        <p className="text-xs font-medium text-gray-600 mb-1 flex items-center gap-1">
+                          <span className="w-2 h-2 bg-blue-600 rounded-full"></span>
+                          Arc Wallet (Circle)
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              <PaymentSection
+                leaseId={lease.id}
+                walletConnected={!!arcWalletAddress}
+                walletAddress={arcWalletAddress}
+                walletId={arcWalletId}
+                walletType="circle"
+                onPaymentComplete={async () => {
+                  console.log('🎉 [Payment Complete] All payments finished, refreshing user profile...');
+                  
+                  // Force refresh to get updated tenant role
+                  await refreshUserProfile();
+                  
+                  // Redirect to dashboard after brief delay
+                  setTimeout(() => {
+                    window.location.href = '/';
+                  }, 3000);
+                }}
+              />
+            </div>
+          ) : (
+            <div className="bg-white rounded-2xl shadow-xl p-8 border-2 border-yellow-200">
+              <div className="mb-6">
+                <h3 className="text-2xl font-bold text-gray-900 mb-2">Complete Required Payments</h3>
+                <div className="p-6 bg-yellow-50 border-2 border-yellow-300 rounded-lg">
+                  <div className="flex items-start gap-3">
+                    <AlertCircle className="w-6 h-6 text-yellow-600 flex-shrink-0 mt-0.5" />
+                    <div>
+                      <h4 className="font-semibold text-yellow-900 mb-2">Wallet Connection Required</h4>
+                      <p className="text-sm text-yellow-800 mb-4">
+                        You must connect your Arc wallet to complete the required payments below:
+                      </p>
+                      <ul className="list-disc list-inside text-sm text-yellow-800 mb-4 space-y-1">
+                        <li>Security Deposit: ${paymentInfo.securityDeposit} USDC</li>
+                        <li>First Month's Rent: ${paymentInfo.firstMonthRent} USDC</li>
+                      </ul>
+                      <button
+                        onClick={connectArcWallet}
+                        className="flex items-center gap-2 px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-semibold shadow-md hover:shadow-lg"
+                      >
+                        <Wallet className="w-5 h-5" />
+                        Connect Arc Wallet to Make Payments
+                      </button>
+                    </div>
+                  </div>
                 </div>
               </div>
             </div>
           )
-        )}
+        ) : null}
 
         {/* Lease Document */}
         <LeaseDocument lease={lease} />
