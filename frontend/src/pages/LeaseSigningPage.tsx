@@ -104,36 +104,48 @@ const LeaseSigningPage: React.FC = () => {
 
         // Check if lease is fully signed (or active) but user is still prospective_tenant
         // This means they need to complete payments
-        if ((leaseData.lease_status === 'fully_signed' || leaseData.lease_status === 'active') && 
+        if ((leaseData.lease_status === 'fully_signed' || leaseData.status === 'fully_signed') && 
             leaseData.tenant_signature && 
-            leaseData.landlord_signature && 
-            userProfile?.role === 'prospective_tenant') {
+            leaseData.landlord_signature) {
           
-          console.log('🔍 [Payment Check] Lease fully signed but user is prospective_tenant');
+          console.log('🔍 [Payment Check] Lease fully signed - checking if payments needed');
           console.log('   Lease Status:', leaseData.lease_status);
           console.log('   Tenant Signature:', !!leaseData.tenant_signature);
           console.log('   Landlord Signature:', !!leaseData.landlord_signature);
           console.log('   User Role:', userProfile?.role);
-          console.log('   User needs to complete payments to activate lease');
-          console.log('   Setting showPayments to TRUE...');
 
-          // ALWAYS show payment section when lease is fully signed
-          setPaymentInfo({
-            securityDeposit: leaseData.security_deposit_usdc,
-            firstMonthRent: leaseData.monthly_rent_usdc,
-            landlordWallet: leaseData.landlord_wallet || '',
-            payments: [] // Will be fetched by PaymentSection component
-          });
-          setShowPayments(true);
-          console.log('✅ [Payment Check] showPayments set to TRUE');
-          console.log('   Payment Info:', {
-            securityDeposit: leaseData.security_deposit_usdc,
-            firstMonthRent: leaseData.monthly_rent_usdc,
-            landlordWallet: leaseData.landlord_wallet
-          });
+          // Check if there are pending payments
+          const response = await axios.get(`https://rent-flow.onrender.com/api/payments/lease/${leaseData.id}`);
+          const payments = response.data?.data || [];
+          const hasPendingPayments = payments.some((p: any) => p.status === 'pending');
 
-          // DO NOT auto-connect wallet - user must choose to connect manually
-          console.log('ℹ️ [Payment Check] User must connect wallet manually to make payments');
+          console.log('   Payments:', payments.length, 'Pending:', hasPendingPayments);
+
+          // Show payment section if user is prospective_tenant OR has pending payments
+          if (userProfile?.role === 'prospective_tenant' || hasPendingPayments) {
+            console.log('   User needs to complete payments to activate lease');
+            console.log('   Setting showPayments to TRUE...');
+
+            // ALWAYS show payment section when lease is fully signed and payments are pending
+            setPaymentInfo({
+              securityDeposit: leaseData.security_deposit_usdc,
+              firstMonthRent: leaseData.monthly_rent_usdc,
+              landlordWallet: leaseData.landlord_wallet || leaseData.property?.wallet_address || '',
+              payments: payments
+            });
+            setShowPayments(true);
+            console.log('✅ [Payment Check] showPayments set to TRUE');
+            console.log('   Payment Info:', {
+              securityDeposit: leaseData.security_deposit_usdc,
+              firstMonthRent: leaseData.monthly_rent_usdc,
+              hasPendingPayments
+            });
+
+            // DO NOT auto-connect wallet - user must choose to connect manually
+            console.log('ℹ️ [Payment Check] User must connect wallet manually to make payments');
+          } else {
+            console.log('✅ [Payment Check] All payments complete, lease activated');
+          }
         }
       } else {
         setError('No lease found for this application. Please contact the property manager.');

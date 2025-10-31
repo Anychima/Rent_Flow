@@ -1019,7 +1019,65 @@ app.post('/api/leases/:id/sign',
       blockchain_hash: blockchain_tx_hash || 'pending'
     }, 'LEASE_SIGNING');
 
-    res.json({ success: true, data });
+    // Check if lease is now fully signed and requires payment
+    const requiresPayment = updateData.lease_status === 'fully_signed' && signer_type === 'tenant';
+    let paymentInfo = null;
+
+    if (requiresPayment) {
+      logger.info('Lease fully signed - checking for pending payments', { lease_id: id }, 'LEASE_SIGNING');
+      
+      // Get or create payment records for this lease
+      const { data: existingPayments, error: paymentsError } = await supabase
+        .from('rent_payments')
+        .select('*')
+        .eq('lease_id', id)
+        .in('payment_type', ['security_deposit', 'rent']);
+
+      if (!paymentsError && (!existingPayments || existingPayments.length === 0)) {
+        // Create initial payment records
+        logger.info('Creating initial payment records', { lease_id: id }, 'LEASE_SIGNING');
+        
+        const paymentsToCreate = [
+          {
+            lease_id: id,
+            tenant_id: data.tenant_id,
+            amount_usdc: data.security_deposit_usdc,
+            payment_type: 'security_deposit',
+            due_date: new Date().toISOString().split('T')[0],
+            status: 'pending',
+            notes: 'Initial security deposit payment',
+            blockchain_network: 'arc'
+          },
+          {
+            lease_id: id,
+            tenant_id: data.tenant_id,
+            amount_usdc: data.monthly_rent_usdc,
+            payment_type: 'rent',
+            due_date: data.start_date,
+            status: 'pending',
+            notes: 'First month rent payment',
+            blockchain_network: 'arc'
+          }
+        ];
+
+        await supabase.from('rent_payments').insert(paymentsToCreate);
+        logger.success('Payment records created', { count: 2 }, 'LEASE_SIGNING');
+      }
+
+      paymentInfo = {
+        securityDeposit: data.security_deposit_usdc,
+        firstMonthRent: data.monthly_rent_usdc,
+        landlordWallet: data.property?.wallet_address || '',
+        payments: existingPayments || []
+      };
+    }
+
+    res.json({ 
+      success: true, 
+      data,
+      requires_payment: requiresPayment,
+      payment_info: paymentInfo
+    });
   })
 );
 
@@ -1050,6 +1108,29 @@ app.post('/api/leases/:id/terminate', async (req: Request, res: Response) => {
     });
   }
 });
+
+// Get payments for a lease
+app.get('/api/payments/lease/:leaseId',
+  validateParams({
+    leaseId: { type: 'uuid', required: true }
+  }),
+  asyncHandler(async (req: Request, res: Response) => {
+    const { leaseId } = req.params;
+
+    const { data, error } = await supabase
+      .from('rent_payments')
+      .select('*')
+      .eq('lease_id', leaseId)
+      .order('due_date', { ascending: true });
+
+    if (error) {
+      logger.error('Failed to fetch lease payments', error, 'PAYMENTS');
+      throw ApiErrors.internal('Failed to fetch payments');
+    }
+
+    res.json({ success: true, data });
+  })
+);
 
 // Delete lease
 app.delete('/api/leases/:id', async (req: Request, res: Response) => {
