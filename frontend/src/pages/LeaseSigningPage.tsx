@@ -60,6 +60,24 @@ const LeaseSigningPage: React.FC = () => {
     fetchLease();
   }, [id, user]); // Wallet is loaded by WalletContext - no need to load here
 
+  // Load wallet from user profile if WalletContext doesn't have it
+  useEffect(() => {
+    // Only run if userProfile is loaded and has a wallet_address
+    if (!userProfile?.wallet_address) return;
+    
+    // Only run if WalletContext doesn't already have a wallet
+    if (contextIsConnected && contextWalletAddress) return;
+    
+    console.log('🔄 [Wallet Recovery] Loading wallet from user profile:', userProfile.wallet_address);
+    
+    // Load wallet into WalletContext
+    saveToContext(
+      userProfile.wallet_address, 
+      userProfile.circle_wallet_id || '', 
+      userProfile.circle_wallet_id ? 'circle' : 'external'
+    );
+  }, [userProfile?.wallet_address, contextIsConnected, contextWalletAddress, userProfile?.circle_wallet_id, saveToContext]);
+
   // Debug: Log wallet connection state
   useEffect(() => {
     console.log('🔍 [Wallet State Debug]', {
