@@ -3,8 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { Search, MapPin, Home, Bed, Bath, DollarSign, Heart, Filter, User, LogOut, FileText, BarChart2, Menu, X, Wallet } from 'lucide-react';
 import axios from 'axios';
 import { useAuth } from '../contexts/AuthContext';
-import { useWallet } from '../contexts/WalletContext';
-import WalletConnectionModal from './WalletConnectionModal';
+import WalletManagement from './WalletManagement';
 import PropertyComparisonModal from './PropertyComparisonModal';
 import { PropertyListSkeleton } from './SkeletonLoader';
 
@@ -35,7 +34,6 @@ interface Property {
 const PublicPropertyListings: React.FC = () => {
   const navigate = useNavigate();
   const { user, userProfile, signOut } = useAuth();
-  const { walletAddress, walletId, isConnected, disconnectWallet } = useWallet();
   
   const [properties, setProperties] = useState<Property[]>([]);
   const [filteredProperties, setFilteredProperties] = useState<Property[]>([]);
@@ -176,18 +174,6 @@ const PublicPropertyListings: React.FC = () => {
         ? prev.filter(t => t !== type)
         : [...prev, type]
     );
-  };
-
-  const handleWalletConnected = (_wId: string, wAddress: string) => {
-    console.log('✅ Wallet connected:', wAddress);
-    setShowWalletModal(false);
-  };
-
-  const handleDisconnectWallet = async () => {
-    if (window.confirm('Are you sure you want to disconnect your wallet?')) {
-      await disconnectWallet();
-      alert('✅ Wallet disconnected successfully!');
-    }
   };
 
   const applyFilters = () => {
@@ -533,11 +519,6 @@ const PublicPropertyListings: React.FC = () => {
                 >
                   <Wallet className="w-5 h-5" />
                   <span>My Wallet</span>
-                  {isConnected && (
-                    <span className="ml-auto bg-green-500 text-white text-xs font-bold px-2 py-1 rounded-full">
-                      Connected
-                    </span>
-                  )}
                 </button>
                 
                 <div className="border-t border-gray-200 my-4"></div>
@@ -628,7 +609,6 @@ const PublicPropertyListings: React.FC = () => {
                     >
                       <Wallet className="w-4 h-4" />
                       <span>Wallet</span>
-                      {isConnected && <span className="text-xs text-green-600">✓</span>}
                     </button>
                     <button
                       onClick={signOut}
@@ -950,7 +930,7 @@ const PublicPropertyListings: React.FC = () => {
       {/* Wallet Management Modal */}
       {showWalletModal && userProfile && (
         <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl shadow-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
+          <div className="bg-white rounded-2xl shadow-2xl max-w-4xl w-full max-h-[90vh] overflow-y-auto">
             <div className="p-6 border-b border-gray-200">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-3">
@@ -958,8 +938,8 @@ const PublicPropertyListings: React.FC = () => {
                     <Wallet className="w-6 h-6 text-white" />
                   </div>
                   <div>
-                    <h2 className="text-2xl font-bold text-gray-900">My Wallet</h2>
-                    <p className="text-sm text-gray-600">Manage your Arc wallet connection</p>
+                    <h2 className="text-2xl font-bold text-gray-900">Wallet Management</h2>
+                    <p className="text-sm text-gray-600">Manage your Arc wallets</p>
                   </div>
                 </div>
                 <button
@@ -972,91 +952,10 @@ const PublicPropertyListings: React.FC = () => {
             </div>
 
             <div className="p-6">
-              {isConnected && walletAddress ? (
-                <div className="space-y-4">
-                  <div className="bg-gradient-to-br from-green-50 to-emerald-50 border-2 border-green-200 rounded-xl p-6">
-                    <div className="flex items-center gap-3 mb-4">
-                      <div className="w-10 h-10 bg-green-500 rounded-full flex items-center justify-center">
-                        <span className="text-white text-xl">✓</span>
-                      </div>
-                      <div>
-                        <p className="text-sm font-medium text-green-900">Wallet Connected</p>
-                        <p className="text-xs text-green-700">Arc Testnet</p>
-                      </div>
-                    </div>
-                    
-                    <div className="bg-white rounded-lg p-4 space-y-2">
-                      <p className="text-xs font-medium text-gray-600">Wallet Address:</p>
-                      <div className="flex items-center justify-between gap-2">
-                        <code className="text-sm font-mono text-gray-900 break-all">
-                          {walletAddress}
-                        </code>
-                        <button
-                          onClick={() => {
-                            navigator.clipboard.writeText(walletAddress);
-                            alert('✅ Wallet address copied to clipboard!');
-                          }}
-                          className="text-blue-600 hover:text-blue-700 p-2 hover:bg-blue-50 rounded transition-colors flex-shrink-0"
-                          title="Copy address"
-                        >
-                          📋
-                        </button>
-                      </div>
-                      {walletId && (
-                        <div className="pt-2 border-t">
-                          <p className="text-xs font-medium text-gray-600">Circle Wallet ID:</p>
-                          <code className="text-xs font-mono text-gray-700">{walletId}</code>
-                        </div>
-                      )}
-                    </div>
-
-                    <div className="mt-4 pt-4 border-t border-green-200">
-                      <p className="text-xs text-green-800 mb-3">
-                        ✅ Your wallet is ready to use for lease signing and payments
-                      </p>
-                      <button
-                        onClick={handleDisconnectWallet}
-                        className="w-full px-4 py-3 bg-red-500 hover:bg-red-600 text-white rounded-lg font-semibold transition-colors flex items-center justify-center gap-2"
-                      >
-                        <LogOut className="w-4 h-4" />
-                        Disconnect Wallet
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              ) : (
-                <div className="space-y-4">
-                  <div className="bg-yellow-50 border-2 border-yellow-200 rounded-xl p-4">
-                    <p className="text-sm text-yellow-800">
-                      ⚠️ <strong>No wallet connected.</strong> You'll need to connect a wallet to sign leases and make payments.
-                    </p>
-                  </div>
-
-                  <WalletConnectionModal
-                    userId={userProfile.id}
-                    userEmail={userProfile.email || ''}
-                    onClose={() => setShowWalletModal(false)}
-                    onWalletConnected={handleWalletConnected}
-                  />
-                </div>
-              )}
-            </div>
-
-            <div className="p-6 bg-gray-50 border-t border-gray-200 rounded-b-2xl">
-              <div className="flex items-start gap-3">
-                <div className="w-8 h-8 bg-blue-100 rounded-full flex items-center justify-center flex-shrink-0">
-                  <span className="text-blue-600 text-sm">ℹ️</span>
-                </div>
-                <div className="text-sm text-gray-600">
-                  <p className="font-medium text-gray-900 mb-1">About Wallet Connection</p>
-                  <p>You can connect either a Circle wallet or an external wallet (MetaMask). Your wallet address will be used for:</p>
-                  <ul className="list-disc list-inside mt-2 space-y-1 text-xs">
-                    <li>Signing lease agreements on the blockchain</li>
-                    <li>Making rent payments in USDC</li>
-                    <li>Receiving security deposit refunds</li>
-                  </ul>
-                </div>
-              </div>
+              <WalletManagement 
+                userId={userProfile.id} 
+                userEmail={userProfile.email || ''}
+              />
             </div>
           </div>
         </div>

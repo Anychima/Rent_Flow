@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import MicroPaymentForm from './MicroPaymentForm';
 import MicropaymentHistory from './MicropaymentHistory';
+import WalletManagement from './WalletManagement';
 import { DashboardStatsSkeleton, TableSkeleton } from './SkeletonLoader';
 
 const API_URL = process.env.REACT_APP_BACKEND_URL || 'https://rent-flow.onrender.com';
@@ -68,7 +69,7 @@ export default function TenantDashboard() {
   const { userProfile, signOut } = useAuth();
   const [dashboardData, setDashboardData] = useState<DashboardData | null>(null);
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState<'overview' | 'maintenance' | 'payments' | 'micropayments'>('overview');
+  const [activeTab, setActiveTab] = useState<'overview' | 'maintenance' | 'payments' | 'micropayments' | 'wallet'>('overview');
   const [showMaintenanceForm, setShowMaintenanceForm] = useState(false);
   const [showMicroPaymentForm, setShowMicroPaymentForm] = useState(false);
   const [verifyingBlockchain, setVerifyingBlockchain] = useState(false);
@@ -629,7 +630,7 @@ Your payment is being processed.`);
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 mt-6">
         <div className="border-b border-gray-200">
           <nav className="-mb-px flex space-x-8">
-            {(['overview', 'maintenance', 'payments', 'micropayments'] as const).map((tab) => (
+            {(['overview', 'maintenance', 'payments', 'micropayments', 'wallet'] as const).map((tab) => (
               <button
                 key={tab}
                 onClick={() => setActiveTab(tab)}
@@ -1103,6 +1104,13 @@ Your payment is being processed.`);
 
         {activeTab === 'micropayments' && userProfile?.id && (
           <MicropaymentHistory userId={userProfile.id} />
+        )}
+
+        {activeTab === 'wallet' && userProfile && (
+          <WalletManagement 
+            userId={userProfile.id} 
+            userEmail={userProfile.email || ''}
+          />
         )}
       </div>
 
