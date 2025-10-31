@@ -45,8 +45,8 @@ const config: HardhatUserConfig = {
     
     // Arc testnet (configured with Circle Developer Wallets)
     arc: {
-      url: process.env.ARC_RPC_URL || "",
-      accounts: process.env.DEPLOYER_PRIVATE_KEY 
+      url: process.env.ARC_RPC_URL || "https://rpc.testnet.arc.network",
+      accounts: process.env.DEPLOYER_PRIVATE_KEY && process.env.DEPLOYER_PRIVATE_KEY.length === 66
         ? [process.env.DEPLOYER_PRIVATE_KEY]
         : [],
       chainId: parseInt(process.env.ARC_CHAIN_ID || "42069"),

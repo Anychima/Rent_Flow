@@ -15,6 +15,9 @@
 
 import { ethers } from 'ethers';
 
+// API Configuration - Uses same environment variable as rest of app
+const API_URL = process.env.REACT_APP_BACKEND_URL || 'http://localhost:3001';
+
 // Smart Contract ABI (only the functions we need)
 const LEASE_SIGNATURE_ABI = [
   "function signLease(string memory leaseId, bytes memory signature, bool isLandlord) external",
@@ -91,7 +94,7 @@ async function signWithCircleWallet(
     console.log('   Lease ID:', leaseInfo.leaseId);
 
     // Call backend to execute contract transaction
-    const response = await fetch('https://rent-flow.onrender.com/api/arc/sign-lease-contract', {
+    const response = await fetch(`${API_URL}/api/arc/sign-lease-contract`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({

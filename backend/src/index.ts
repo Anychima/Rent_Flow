@@ -21,10 +21,6 @@ import applicationService from './services/applicationService';
 import circleSigningService from './services/circleSigningService';
 import arcWalletService from './services/arcWalletService';
 import arcPaymentService from './services/arcPaymentService';
-import { autonomousPaymentAgent } from './services/autonomousPaymentAgent';
-import { conversationalVoiceAgent } from './services/conversationalVoiceAgent';
-import { aiDecisionsContract } from './services/aiDecisionsContract';
-import { rentFlowCoreService } from './services/rentFlowCoreService';
 
 // Validate environment variables on startup
 const envValidation = validateEnvironment();
@@ -647,33 +643,8 @@ app.post('/api/properties',
 
     if (error) throw ApiErrors.internal('Failed to create property');
 
-    // REGISTER PROPERTY ON RENTFLOW CORE CONTRACT
-    if (rentFlowCoreService.isReady()) {
-      try {
-        const coreResult = await rentFlowCoreService.registerProperty({
-          monthlyRent: propertyData.monthly_rent_usdc,
-          securityDeposit: propertyData.security_deposit_usdc
-        });
-
-        if (coreResult.success && coreResult.propertyId !== undefined) {
-          // Update property with blockchain ID
-          await supabase
-            .from('properties')
-            .update({
-              blockchain_property_id: coreResult.propertyId,
-              blockchain_transaction_hash: coreResult.transactionHash
-            })
-            .eq('id', data.id);
-          
-          data.blockchain_property_id = coreResult.propertyId;
-          data.blockchain_transaction_hash = coreResult.transactionHash;
-          
-          console.log('✅ [RentFlowCore] Property registered on-chain:', coreResult.propertyId);
-        }
-      } catch (coreError) {
-        console.error('⚠️ [RentFlowCore] Failed to register property on-chain:', coreError);
-      }
-    }
+    // TODO: REGISTER PROPERTY ON RENTFLOW CORE CONTRACT (service not yet deployed)
+    // Blockchain property registration will be added in future updates
 
     res.status(201).json({ success: true, data });
   })
@@ -879,36 +850,8 @@ app.post('/api/leases',
 
     if (error) throw ApiErrors.internal('Failed to create lease');
 
-    // REGISTER LEASE ON RENTFLOW CORE CONTRACT
-    if (rentFlowCoreService.isReady() && data.property?.blockchain_property_id) {
-      try {
-        const coreResult = await rentFlowCoreService.createLease({
-          propertyId: data.property.blockchain_property_id,
-          tenantAddress: data.tenant?.wallet_address || '0x0000000000000000000000000000000000000000',
-          startDate: new Date(leaseData.start_date),
-          durationMonths: Math.floor((new Date(leaseData.end_date).getTime() - new Date(leaseData.start_date).getTime()) / (1000 * 60 * 60 * 24 * 30)),
-          rentDueDay: leaseData.rent_due_day || 1
-        });
-
-        if (coreResult.success && coreResult.leaseId !== undefined) {
-          // Update lease with blockchain ID
-          await supabase
-            .from('leases')
-            .update({
-              blockchain_lease_id: coreResult.leaseId,
-              blockchain_transaction_hash: coreResult.transactionHash
-            })
-            .eq('id', data.id);
-          
-          data.blockchain_lease_id = coreResult.leaseId;
-          data.blockchain_transaction_hash = coreResult.transactionHash;
-          
-          console.log('✅ [RentFlowCore] Lease created on-chain:', coreResult.leaseId);
-        }
-      } catch (coreError) {
-        console.error('⚠️ [RentFlowCore] Failed to create lease on-chain:', coreError);
-      }
-    }
+    // TODO: REGISTER LEASE ON RENTFLOW CORE CONTRACT (service not yet deployed)
+    // Blockchain lease registration will be added in future updates
 
     res.status(201).json({ success: true, data });
   })
@@ -3433,64 +3376,53 @@ app.post('/api/ai/process-payment', async (req: Request, res: Response) => {
   }
 });
 
-// AI Agent Autonomy - Autonomous rent payment processing
+// TODO: AI Agent Autonomy - Autonomous rent payment processing (service not yet deployed)
 // This endpoint showcases TRUE AI autonomy: the AI agent evaluates upcoming payments,
 // makes financial decisions, and executes USDC transfers without human intervention
-app.post('/api/ai/autonomous-rent-payments', 
-  asyncHandler(async (_req: Request, res: Response) => {
-    logger.info('🤖 Starting autonomous rent payment cycle...', undefined, 'AI_AGENT');
+// app.post('/api/ai/autonomous-rent-payments', 
+//   asyncHandler(async (_req: Request, res: Response) => {
+//     logger.info('🤖 Starting autonomous rent payment cycle...', undefined, 'AI_AGENT');
+//     const result = await autonomousPaymentAgent.processAutonomousRentPayments();
+//     logger.success(`Autonomous payment cycle complete. Processed: ${result.processed}`, undefined, 'AI_AGENT');
+//     res.json({
+//       success: true,
+//       message: `AI agent processed ${result.processed} autonomous rent payments`,
+//       data: result
+//     });
+//   })
+// );
 
-    const result = await autonomousPaymentAgent.processAutonomousRentPayments();
-
-    logger.success(`Autonomous payment cycle complete. Processed: ${result.processed}`, undefined, 'AI_AGENT');
-
-    res.json({
-      success: true,
-      message: `AI agent processed ${result.processed} autonomous rent payments`,
-      data: result
-    });
-  })
-);
-
-// Conversational Voice AI - Natural language voice queries
+// TODO: Conversational Voice AI - Natural language voice queries (service not yet deployed)
 // ElevenLabs Hackathon Feature: Interactive voice agent for rent management
-app.post('/api/ai/voice-query',
-  validateBody({
-    userId: { type: 'uuid', required: true },
-    voiceTranscript: { type: 'string', required: true, min: 1 }
-  }),
-  asyncHandler(async (req: Request, res: Response) => {
-    const { userId, voiceTranscript } = req.body;
+// app.post('/api/ai/voice-query',
+//   validateBody({
+//     userId: { type: 'uuid', required: true },
+//     voiceTranscript: { type: 'string', required: true, min: 1 }
+//   }),
+//   asyncHandler(async (req: Request, res: Response) => {
+//     const { userId, voiceTranscript } = req.body;
+//     logger.info(`🎙️ Processing voice query from user ${userId}`, { query: voiceTranscript }, 'VOICE_AI');
+//     const result = await conversationalVoiceAgent.processVoiceQuery(userId, voiceTranscript);
+//     logger.success('Voice query processed', { hasAudio: !!result.audioUrl }, 'VOICE_AI');
+//     res.json(result);
+//   })
+// );
 
-    logger.info(`🎙️ Processing voice query from user ${userId}`, { query: voiceTranscript }, 'VOICE_AI');
-
-    const result = await conversationalVoiceAgent.processVoiceQuery(userId, voiceTranscript);
-
-    logger.success('Voice query processed', { hasAudio: !!result.audioUrl }, 'VOICE_AI');
-
-    res.json(result);
-  })
-);
-
-// Voice-Activated Payment - "Pay my rent" voice command
+// TODO: Voice-Activated Payment - "Pay my rent" voice command (service not yet deployed)
 // ElevenLabs Hackathon Feature: Voice-controlled USDC payments
-app.post('/api/ai/voice-payment',
-  validateBody({
-    userId: { type: 'uuid', required: true },
-    voiceCommand: { type: 'string', required: true, min: 1 }
-  }),
-  asyncHandler(async (req: Request, res: Response) => {
-    const { userId, voiceCommand } = req.body;
-
-    logger.info(`💰 Processing voice payment command from user ${userId}`, { command: voiceCommand }, 'VOICE_AI');
-
-    const result = await conversationalVoiceAgent.processVoicePayment(userId, voiceCommand);
-
-    logger.success('Voice payment processed', { success: result.success }, 'VOICE_AI');
-
-    res.json(result);
-  })
-);
+// app.post('/api/ai/voice-payment',
+//   validateBody({
+//     userId: { type: 'uuid', required: true },
+//     voiceCommand: { type: 'string', required: true, min: 1 }
+//   }),
+//   asyncHandler(async (req: Request, res: Response) => {
+//     const { userId, voiceCommand } = req.body;
+//     logger.info(`💰 Processing voice payment command from user ${userId}`, { command: voiceCommand }, 'VOICE_AI');
+//     const result = await conversationalVoiceAgent.processVoicePayment(userId, voiceCommand);
+//     logger.success('Voice payment processed', { success: result.success }, 'VOICE_AI');
+//     res.json(result);
+//   })
+// );
 
 // =====================================
 // PROPERTY APPLICATIONS & PUBLIC BROWSING
@@ -4883,23 +4815,22 @@ app.post('/api/arc/payment/send', async (req: Request, res: Response) => {
       return res.status(400).json(result);
     }
 
-    // RECORD PAYMENT DECISION ON-CHAIN
+    // TODO: RECORD PAYMENT DECISION ON-CHAIN (service not yet deployed)
     let onChainDecisionId: string | undefined;
-    try {
-      const onChainResult = await aiDecisionsContract.recordPaymentDecision({
-        tenant: fromWalletId, // Using wallet ID as identifier
-        landlord: toAddress,
-        amountUSDC: amount,
-        approved: true,
-        confidenceScore: 100, // User-initiated payment = 100% confidence
-        reasoning: `User-initiated rent payment via Arc Testnet. Payment ID: ${paymentId || 'N/A'}. Lease ID: ${leaseId || 'N/A'}`
-      });
-      
-      onChainDecisionId = onChainResult.decisionId;
-      console.log(`✅ [Blockchain] Payment decision recorded on-chain: ${onChainDecisionId}`);
-    } catch (error) {
-      console.error('⚠️ [Blockchain] Failed to record payment decision on-chain:', error);
-    }
+    // try {
+    //   const onChainResult = await aiDecisionsContract.recordPaymentDecision({
+    //     tenant: fromWalletId,
+    //     landlord: toAddress,
+    //     amountUSDC: amount,
+    //     approved: true,
+    //     confidenceScore: 100,
+    //     reasoning: `User-initiated rent payment via Arc Testnet. Payment ID: ${paymentId || 'N/A'}. Lease ID: ${leaseId || 'N/A'}`
+    //   });
+    //   onChainDecisionId = onChainResult.decisionId;
+    //   console.log(`✅ [Blockchain] Payment decision recorded on-chain: ${onChainDecisionId}`);
+    // } catch (error) {
+    //   console.error('⚠️ [Blockchain] Failed to record payment decision on-chain:', error);
+    // }
 
     // Payment successful OR still processing - update payment record if paymentId provided
     if (paymentId) {
@@ -4922,43 +4853,40 @@ app.post('/api/arc/payment/send', async (req: Request, res: Response) => {
         })
         .eq('id', paymentId);
 
-      // RECORD PAYMENT ON RENTFLOW CORE CONTRACT
-      if (rentFlowCoreService.isReady() && leaseId) {
-        try {
-          // Get lease to get blockchain lease ID
-          const { data: lease } = await supabase
-            .from('leases')
-            .select('blockchain_lease_id')
-            .eq('id', leaseId)
-            .single();
+      // TODO: RECORD PAYMENT ON RENTFLOW CORE CONTRACT (service not yet deployed)
+      // if (rentFlowCoreService.isReady() && leaseId) {
+      //   try {
+      //     const { data: lease } = await supabase
+      //       .from('leases')
+      //       .select('blockchain_lease_id')
+      //       .eq('id', leaseId)
+      //       .single();
+      //     if (lease?.blockchain_lease_id) {
+      //       const coreResult = await rentFlowCoreService.recordRentPayment({
+      //         leaseId: lease.blockchain_lease_id,
+      //         amount: amount
+      //       });
+      //       if (coreResult.success) {
+      //         console.log('✅ [RentFlowCore] Rent payment recorded on-chain');
+      //       }
+      //     }
+      //   } catch (coreError) {
+      //     console.error('⚠️ [RentFlowCore] Failed to record rent payment on-chain:', coreError);
+      //   }
+      // }
 
-          if (lease?.blockchain_lease_id) {
-            const coreResult = await rentFlowCoreService.recordRentPayment({
-              leaseId: lease.blockchain_lease_id,
-              amount: amount
-            });
-
-            if (coreResult.success) {
-              console.log('✅ [RentFlowCore] Rent payment recorded on-chain');
-            }
-          }
-        } catch (coreError) {
-          console.error('⚠️ [RentFlowCore] Failed to record rent payment on-chain:', coreError);
-        }
-      }
-
-      // Mark payment as executed on-chain
-      if (onChainDecisionId && result.transactionHash) {
-        try {
-          await aiDecisionsContract.markPaymentExecuted(
-            onChainDecisionId,
-            result.transactionHash
-          );
-          console.log(`✅ [Blockchain] Payment marked as executed on-chain`);
-        } catch (error) {
-          console.error('⚠️ [Blockchain] Failed to mark payment executed on-chain:', error);
-        }
-      }
+      // TODO: Mark payment as executed on-chain (service not yet deployed)
+      // if (onChainDecisionId && result.transactionHash) {
+      //   try {
+      //     await aiDecisionsContract.markPaymentExecuted(
+      //       onChainDecisionId,
+      //       result.transactionHash
+      //     );
+      //     console.log(`✅ [Blockchain] Payment marked as executed on-chain`);
+      //   } catch (error) {
+      //     console.error('⚠️ [Blockchain] Failed to mark payment executed on-chain:', error);
+      //   }
+      // }
 
       if (updateError) {
         console.error('❌ [ArcPayment] Failed to update payment record:', updateError);
@@ -5261,19 +5189,14 @@ app.get('/api/analytics/tenants', async (req: Request, res: Response) => {
 // Get AI decision analytics
 app.get('/api/analytics/ai-decisions', async (req: Request, res: Response) => {
   try {
-    // Get AI decision statistics from blockchain
-    const totalDecisions = await aiDecisionsContract.getTotalPaymentDecisions();
-    
-    // Get recent decisions
-    // This would require querying the blockchain contract for recent decisions
-    // For now, we'll return what we can get easily
+    // TODO: Get AI decision statistics from blockchain (service not yet deployed)
+    // const totalDecisions = await aiDecisionsContract.getTotalPaymentDecisions();
     
     res.json({
       success: true,
       data: {
-        totalAIDecisions: totalDecisions,
-        // More detailed analytics could be added here
-        // by querying the blockchain contract directly
+        totalAIDecisions: 0, // Placeholder until service is deployed
+        message: 'AI decision tracking coming soon'
       }
     });
   } catch (error) {

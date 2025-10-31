@@ -217,3 +217,27 @@ CREATE TRIGGER update_leases_updated_at BEFORE UPDATE ON leases
 
 CREATE TRIGGER update_maintenance_requests_updated_at BEFORE UPDATE ON maintenance_requests
     FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
+-- Tenant Reviews/Ratings Table
+CREATE TABLE IF NOT EXISTS tenant_reviews (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    lease_id UUID REFERENCES leases(id) ON DELETE CASCADE,
+    reviewer_id UUID REFERENCES users(id), -- Property manager reviewing tenant
+    tenant_id UUID REFERENCES users(id), -- Tenant being reviewed
+    rating INTEGER CHECK (rating BETWEEN 1 AND 5),
+    review_text TEXT,
+    review_type TEXT DEFAULT 'post_tenancy' CHECK (review_type IN ('during_tenancy', 'post_tenancy', 'property_manager')), 
+    is_anonymous BOOLEAN DEFAULT FALSE,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+-- Create indexes for tenant reviews
+CREATE INDEX idx_tenant_reviews_lease ON tenant_reviews(lease_id);
+CREATE INDEX idx_tenant_reviews_tenant ON tenant_reviews(tenant_id);
+CREATE INDEX idx_tenant_reviews_reviewer ON tenant_reviews(reviewer_id);
+CREATE INDEX idx_tenant_reviews_rating ON tenant_reviews(rating);
+
+-- Add trigger for tenant reviews updated_at
+CREATE TRIGGER update_tenant_reviews_updated_at BEFORE UPDATE ON tenant_reviews
+    FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();

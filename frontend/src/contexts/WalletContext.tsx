@@ -26,7 +26,6 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
 
   // Load wallet from localStorage on mount
   useEffect(() => {
-    console.log('🔍 [WalletContext] Initializing - checking localStorage...');
     const savedWallet = localStorage.getItem('rentflow_wallet');
     if (savedWallet) {
       try {
@@ -36,20 +35,11 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
           setWalletId(walletData.walletId || '');
           setWalletType(walletData.type);
           setIsConnected(true);
-          console.log('✅ [WalletContext] Loaded from localStorage:', {
-            address: walletData.address,
-            type: walletData.type,
-            walletId: walletData.walletId || 'none'
-          });
-        } else {
-          console.log('⚠️ [WalletContext] Saved wallet has no address');
         }
       } catch (err) {
-        console.error('❌ [WalletContext] Failed to parse saved wallet:', err);
+        console.error('[WalletContext] Failed to parse saved wallet');
         localStorage.removeItem('rentflow_wallet');
       }
-    } else {
-      console.log('📁 [WalletContext] No wallet saved in localStorage');
     }
   }, []);
 
@@ -68,7 +58,6 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
 
     // Save to localStorage
     localStorage.setItem('rentflow_wallet', JSON.stringify(walletInfo));
-    console.log('💾 [Global Wallet] Saved to localStorage:', walletInfo);
   };
 
   const disconnectWallet = () => {
@@ -77,7 +66,6 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
     setWalletType('external');
     setIsConnected(false);
     localStorage.removeItem('rentflow_wallet');
-    console.log('🗑️ [Global Wallet] Disconnected and cleared');
   };
 
   return (

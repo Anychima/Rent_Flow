@@ -30,27 +30,37 @@ const AuthWall: React.FC<AuthWallProps> = ({ returnUrl, mode: initialMode = 'sig
     setError('');
     setLoading(true);
 
+    // Add a hard timeout to prevent infinite loading
+    const timeoutId = setTimeout(() => {
+      setLoading(false);
+      setError('Request timed out. Please check your internet connection and try again.');
+    }, 30000); // 30 second hard timeout
+
     try {
       if (mode === 'signup') {
         // Validation
         if (!formData.fullName.trim()) {
+          clearTimeout(timeoutId);
           setError('Please enter your full name');
           setLoading(false);
           return;
         }
 
         if (formData.password !== formData.confirmPassword) {
+          clearTimeout(timeoutId);
           setError('Passwords do not match');
           setLoading(false);
           return;
         }
 
         if (formData.password.length < 6) {
+          clearTimeout(timeoutId);
           setError('Password must be at least 6 characters');
           setLoading(false);
           return;
         }
 
+        console.log('[AuthWall] Starting signup...');
         // Sign up
         const { error: signUpError } = await signUp(
           formData.email,
@@ -60,12 +70,16 @@ const AuthWall: React.FC<AuthWallProps> = ({ returnUrl, mode: initialMode = 'sig
           // No wallet address - Arc wallet created automatically by backend
         );
 
+        clearTimeout(timeoutId);
+
         if (signUpError) {
+          console.error('[AuthWall] Signup error:', signUpError.message);
           setError(signUpError.message || 'Failed to create account');
           setLoading(false);
           return;
         }
 
+        console.log('[AuthWall] Signup successful');
         // TODO: Create user profile with role in database
         // For now, redirect to verification page
         alert('Account created! Please check your email for verification.');
@@ -78,14 +92,19 @@ const AuthWall: React.FC<AuthWallProps> = ({ returnUrl, mode: initialMode = 'sig
         }
       } else {
         // Login
+        console.log('[AuthWall] Starting login for:', formData.email);
         const { error: signInError } = await signIn(formData.email, formData.password);
 
+        clearTimeout(timeoutId);
+
         if (signInError) {
+          console.error('[AuthWall] Login error:', signInError.message);
           setError(signInError.message || 'Failed to sign in');
           setLoading(false);
           return;
         }
 
+        console.log('[AuthWall] Login successful, redirecting...');
         // Redirect to return URL or home (role-based routing happens in App.tsx)
         if (returnUrl) {
           navigate(returnUrl);
@@ -94,9 +113,9 @@ const AuthWall: React.FC<AuthWallProps> = ({ returnUrl, mode: initialMode = 'sig
         }
       }
     } catch (err) {
-      setError('An unexpected error occurred');
-      console.error('Auth error:', err);
-    } finally {
+      clearTimeout(timeoutId);
+      console.error('[AuthWall] Unexpected error:', err);
+      setError('An unexpected error occurred. Please try again.');
       setLoading(false);
     }
   };

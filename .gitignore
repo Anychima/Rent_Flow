@@ -46,3 +46,6 @@ secrets/
 # Temporary
 tmp/
 temp/
+
+# Local Netlify folder
+.netlify

@@ -1,0 +1,9 @@
+{
+  "network": "arc",
+  "deployer": "0x4e076D7ce8F401858E3026BC567478C6611d741a",
+  "contracts": {
+    "MockUSDC": "0xDd1eF97edb513e9914Cf0FbFB0bE50D51646B401",
+    "RentFlowCore": "0x964270b14e83bb5b7872f1be0b84dD8DBFd1A40f"
+  },
+  "timestamp": "2025-10-30T08:50:27.831Z"
+}

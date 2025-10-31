@@ -266,6 +266,62 @@ Keep it to 1-2 sentences. Be professional and informative.`
       return `Work completed on "${requestTitle}". Actual cost: $${actualCost}`;
     }
   }
+
+  /**
+   * Generate an AI-powered property description
+   */
+  async generatePropertyDescription(params: {
+    title: string;
+    propertyType: string;
+    bedrooms: number;
+    bathrooms: number;
+    squareFeet: number;
+    monthlyRent: number;
+    amenities?: string[];
+    address?: string;
+    city?: string;
+    state?: string;
+  }): Promise<string> {
+    if (!this.isConfigured || !this.client) {
+      // Fallback description
+      return `Beautiful ${params.bedrooms} bedroom, ${params.bathrooms} bathroom ${params.propertyType} spanning ${params.squareFeet} sq ft. Located in ${params.city}, ${params.state}. ${params.amenities && params.amenities.length > 0 ? `Features include ${params.amenities.slice(0, 3).join(', ')}.` : ''} Available for $${params.monthlyRent}/month.`;
+    }
+
+    try {
+      const completion = await this.client.chat.completions.create({
+        model: 'gpt-4',
+        messages: [
+          {
+            role: 'system',
+            content: 'You are a professional real estate copywriter. Create compelling, accurate property descriptions that highlight key features and appeal to potential tenants. Keep descriptions 3-4 sentences, professional yet engaging.'
+          },
+          {
+            role: 'user',
+            content: `Create a property listing description:
+
+Title: ${params.title}
+Type: ${params.propertyType}
+Bedrooms: ${params.bedrooms}
+Bathrooms: ${params.bathrooms}
+Square Feet: ${params.squareFeet}
+Monthly Rent: $${params.monthlyRent} USDC
+${params.amenities && params.amenities.length > 0 ? `Amenities: ${params.amenities.join(', ')}` : ''}
+Location: ${params.address || ''} ${params.city}, ${params.state}
+
+Write a compelling 3-4 sentence description.`
+          }
+        ],
+        temperature: 0.7,
+        max_tokens: 200,
+      });
+
+      return completion.choices[0]?.message?.content?.trim() || 
+        `Beautiful ${params.bedrooms} bedroom, ${params.bathrooms} bathroom ${params.propertyType} in ${params.city}, ${params.state}.`;
+    } catch (error) {
+      console.error('OpenAI property description error:', error);
+      return `Beautiful ${params.bedrooms} bedroom, ${params.bathrooms} bathroom ${params.propertyType} spanning ${params.squareFeet} sq ft. Located in ${params.city}, ${params.state}. Available for $${params.monthlyRent}/month.`;
+    }
+  }
 }
 
 export default new OpenAIService();
