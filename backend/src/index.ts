@@ -21,6 +21,10 @@ import applicationService from './services/applicationService';
 import circleSigningService from './services/circleSigningService';
 import arcWalletService from './services/arcWalletService';
 import arcPaymentService from './services/arcPaymentService';
+import { autonomousPaymentAgent } from './services/autonomousPaymentAgent';
+import { conversationalVoiceAgent } from './services/conversationalVoiceAgent';
+import { aiDecisionsContract } from './services/aiDecisionsContract';
+import { rentFlowCoreService } from './services/rentFlowCoreService';
 
 // Validate environment variables on startup
 const envValidation = validateEnvironment();
@@ -514,10 +518,11 @@ app.get('/api/properties/public', async (_req: Request, res: Response) => {
           availability_status: availabilityStatus
         };
       })
-      // Filter out properties that are rented or have active leases
-      .filter((property: any) => property.availability_status === 'available');
+      // Filter out ONLY rented properties (active leases)
+      // Show properties that are available or in the application/signing process
+      .filter((property: any) => property.availability_status !== 'rented');
 
-    logger.info(`Returning ${enrichedProperties?.length || 0} available properties out of ${properties?.length || 0} total active properties`, undefined, 'PUBLIC_PROPERTIES');
+    logger.info(`Returning ${enrichedProperties?.length || 0} properties (excluding ${properties?.filter((p: any) => p.leases?.some((l: any) => (l.lease_status || l.status) === 'active')).length || 0} rented) out of ${properties?.length || 0} total`, undefined, 'PUBLIC_PROPERTIES');
 
     res.json({ success: true, data: enrichedProperties });
   } catch (error) {
@@ -606,6 +611,34 @@ app.post('/api/properties',
   asyncHandler(async (req: Request, res: Response) => {
     const propertyData = req.body;
 
+    // AI-POWERED PROPERTY DESCRIPTION GENERATION
+    if (!propertyData.description || propertyData.description.trim() === '') {
+      try {
+        logger.info('Generating AI property description', { propertyId: propertyData.id }, 'AI');
+        
+        const aiDescription = await openaiService.generatePropertyDescription({
+          title: propertyData.title,
+          propertyType: propertyData.property_type || 'apartment',
+          bedrooms: propertyData.bedrooms,
+          bathrooms: propertyData.bathrooms,
+          squareFeet: propertyData.square_feet,
+          monthlyRent: propertyData.monthly_rent_usdc,
+          amenities: propertyData.amenities || [],
+          address: propertyData.address,
+          city: propertyData.city,
+          state: propertyData.state
+        });
+        
+        propertyData.description = aiDescription;
+        propertyData.ai_generated_description = true;
+        
+        logger.success('AI description generated', { length: aiDescription.length }, 'AI');
+      } catch (error) {
+        logger.error('Failed to generate AI description, using fallback', error, 'AI');
+        propertyData.description = `Beautiful ${propertyData.bedrooms} bedroom, ${propertyData.bathrooms} bathroom ${propertyData.property_type || 'property'} located in ${propertyData.city}, ${propertyData.state}.`;
+      }
+    }
+
     const { data, error } = await supabase
       .from('properties')
       .insert([propertyData])
@@ -613,6 +646,34 @@ app.post('/api/properties',
       .single();
 
     if (error) throw ApiErrors.internal('Failed to create property');
+
+    // REGISTER PROPERTY ON RENTFLOW CORE CONTRACT
+    if (rentFlowCoreService.isReady()) {
+      try {
+        const coreResult = await rentFlowCoreService.registerProperty({
+          monthlyRent: propertyData.monthly_rent_usdc,
+          securityDeposit: propertyData.security_deposit_usdc
+        });
+
+        if (coreResult.success && coreResult.propertyId !== undefined) {
+          // Update property with blockchain ID
+          await supabase
+            .from('properties')
+            .update({
+              blockchain_property_id: coreResult.propertyId,
+              blockchain_transaction_hash: coreResult.transactionHash
+            })
+            .eq('id', data.id);
+          
+          data.blockchain_property_id = coreResult.propertyId;
+          data.blockchain_transaction_hash = coreResult.transactionHash;
+          
+          console.log('✅ [RentFlowCore] Property registered on-chain:', coreResult.propertyId);
+        }
+      } catch (coreError) {
+        console.error('⚠️ [RentFlowCore] Failed to register property on-chain:', coreError);
+      }
+    }
 
     res.status(201).json({ success: true, data });
   })
@@ -818,7 +879,68 @@ app.post('/api/leases',
 
     if (error) throw ApiErrors.internal('Failed to create lease');
 
+    // REGISTER LEASE ON RENTFLOW CORE CONTRACT
+    if (rentFlowCoreService.isReady() && data.property?.blockchain_property_id) {
+      try {
+        const coreResult = await rentFlowCoreService.createLease({
+          propertyId: data.property.blockchain_property_id,
+          tenantAddress: data.tenant?.wallet_address || '0x0000000000000000000000000000000000000000',
+          startDate: new Date(leaseData.start_date),
+          durationMonths: Math.floor((new Date(leaseData.end_date).getTime() - new Date(leaseData.start_date).getTime()) / (1000 * 60 * 60 * 24 * 30)),
+          rentDueDay: leaseData.rent_due_day || 1
+        });
+
+        if (coreResult.success && coreResult.leaseId !== undefined) {
+          // Update lease with blockchain ID
+          await supabase
+            .from('leases')
+            .update({
+              blockchain_lease_id: coreResult.leaseId,
+              blockchain_transaction_hash: coreResult.transactionHash
+            })
+            .eq('id', data.id);
+          
+          data.blockchain_lease_id = coreResult.leaseId;
+          data.blockchain_transaction_hash = coreResult.transactionHash;
+          
+          console.log('✅ [RentFlowCore] Lease created on-chain:', coreResult.leaseId);
+        }
+      } catch (coreError) {
+        console.error('⚠️ [RentFlowCore] Failed to create lease on-chain:', coreError);
+      }
+    }
+
     res.status(201).json({ success: true, data });
+  })
+);
+
+// Get lease by ID
+app.get('/api/leases/:id',
+  validateParams({
+    id: { type: 'uuid', required: true }
+  }),
+  asyncHandler(async (req: Request, res: Response) => {
+    const { id } = req.params;
+
+    const { data, error } = await supabase
+      .from('leases')
+      .select(`
+        *,
+        property:properties(*),
+        tenant:users(*),
+        application:property_applications(*)
+      `)
+      .eq('id', id)
+      .single();
+
+    if (error) {
+      if (error.code === 'PGRST116') {
+        throw ApiErrors.notFound('Lease not found');
+      }
+      throw ApiErrors.internal('Failed to fetch lease');
+    }
+
+    res.json({ success: true, data });
   })
 );
 
@@ -853,6 +975,106 @@ app.put('/api/leases/:id',
       }
       throw ApiErrors.internal('Failed to update lease');
     }
+
+    res.json({ success: true, data });
+  })
+);
+
+// Sign lease endpoint - stores blockchain transaction hash
+app.post('/api/leases/:id/sign',
+  validateParams({
+    id: { type: 'uuid', required: true }
+  }),
+  validateBody({
+    signer_id: { type: 'uuid', required: true },
+    signature: { type: 'string', required: true },
+    signer_type: { type: 'string', required: true, enum: ['landlord', 'tenant'] },
+    wallet_address: { type: 'string', required: false },
+    wallet_type: { type: 'string', required: false, enum: ['circle', 'external'] },
+    wallet_id: { type: 'string', required: false },
+    blockchain_tx_hash: { type: 'string', required: false }
+  }),
+  asyncHandler(async (req: Request, res: Response) => {
+    const { id } = req.params;
+    const { signer_id, signature, signer_type, wallet_address, blockchain_tx_hash } = req.body;
+
+    logger.info(`Signing lease: ${id} by ${signer_type}`, { signer_id, wallet_address }, 'LEASE_SIGNING');
+
+    // Get current lease
+    const { data: currentLease, error: fetchError } = await supabase
+      .from('leases')
+      .select('*')
+      .eq('id', id)
+      .single();
+
+    if (fetchError || !currentLease) {
+      throw ApiErrors.notFound('Lease not found');
+    }
+
+    // Prepare update data
+    const updateData: any = {};
+    const now = new Date().toISOString();
+
+    if (signer_type === 'landlord') {
+      updateData.landlord_signature = signature;
+      updateData.landlord_signed_at = now;
+      updateData.landlord_signature_date = now;
+      
+      // Update lease status
+      if (currentLease.tenant_signature || currentLease.tenant_signed_at) {
+        updateData.lease_status = 'fully_signed';
+        updateData.status = 'active';
+        // Store blockchain hash when both parties have signed
+        if (blockchain_tx_hash) {
+          updateData.blockchain_transaction_hash = blockchain_tx_hash;
+        }
+      } else {
+        updateData.lease_status = 'pending_tenant';
+        updateData.status = 'pending';
+      }
+    } else {
+      updateData.tenant_signature = signature;
+      updateData.tenant_signed_at = now;
+      updateData.tenant_signature_date = now;
+      
+      // Update lease status
+      if (currentLease.landlord_signature || currentLease.landlord_signed_at) {
+        updateData.lease_status = 'fully_signed';
+        updateData.status = 'active';
+        // Store blockchain hash when both parties have signed
+        if (blockchain_tx_hash) {
+          updateData.blockchain_transaction_hash = blockchain_tx_hash;
+        }
+      } else {
+        updateData.lease_status = 'pending_landlord';
+        updateData.status = 'pending';
+      }
+    }
+
+    logger.info(`Updating lease with status: ${updateData.lease_status}`, { blockchain_tx_hash }, 'LEASE_SIGNING');
+
+    // Update lease in database
+    const { data, error } = await supabase
+      .from('leases')
+      .update(updateData)
+      .eq('id', id)
+      .select(`
+        *,
+        property:properties(*),
+        tenant:users(*)
+      `)
+      .single();
+
+    if (error) {
+      logger.error('Failed to update lease signature', error, 'LEASE_SIGNING');
+      throw ApiErrors.internal('Failed to save signature');
+    }
+
+    logger.success(`Lease ${updateData.lease_status}`, { 
+      lease_id: id, 
+      signer: signer_type,
+      blockchain_hash: blockchain_tx_hash || 'pending'
+    }, 'LEASE_SIGNING');
 
     res.json({ success: true, data });
   })
@@ -3211,6 +3433,65 @@ app.post('/api/ai/process-payment', async (req: Request, res: Response) => {
   }
 });
 
+// AI Agent Autonomy - Autonomous rent payment processing
+// This endpoint showcases TRUE AI autonomy: the AI agent evaluates upcoming payments,
+// makes financial decisions, and executes USDC transfers without human intervention
+app.post('/api/ai/autonomous-rent-payments', 
+  asyncHandler(async (_req: Request, res: Response) => {
+    logger.info('🤖 Starting autonomous rent payment cycle...', undefined, 'AI_AGENT');
+
+    const result = await autonomousPaymentAgent.processAutonomousRentPayments();
+
+    logger.success(`Autonomous payment cycle complete. Processed: ${result.processed}`, undefined, 'AI_AGENT');
+
+    res.json({
+      success: true,
+      message: `AI agent processed ${result.processed} autonomous rent payments`,
+      data: result
+    });
+  })
+);
+
+// Conversational Voice AI - Natural language voice queries
+// ElevenLabs Hackathon Feature: Interactive voice agent for rent management
+app.post('/api/ai/voice-query',
+  validateBody({
+    userId: { type: 'uuid', required: true },
+    voiceTranscript: { type: 'string', required: true, min: 1 }
+  }),
+  asyncHandler(async (req: Request, res: Response) => {
+    const { userId, voiceTranscript } = req.body;
+
+    logger.info(`🎙️ Processing voice query from user ${userId}`, { query: voiceTranscript }, 'VOICE_AI');
+
+    const result = await conversationalVoiceAgent.processVoiceQuery(userId, voiceTranscript);
+
+    logger.success('Voice query processed', { hasAudio: !!result.audioUrl }, 'VOICE_AI');
+
+    res.json(result);
+  })
+);
+
+// Voice-Activated Payment - "Pay my rent" voice command
+// ElevenLabs Hackathon Feature: Voice-controlled USDC payments
+app.post('/api/ai/voice-payment',
+  validateBody({
+    userId: { type: 'uuid', required: true },
+    voiceCommand: { type: 'string', required: true, min: 1 }
+  }),
+  asyncHandler(async (req: Request, res: Response) => {
+    const { userId, voiceCommand } = req.body;
+
+    logger.info(`💰 Processing voice payment command from user ${userId}`, { command: voiceCommand }, 'VOICE_AI');
+
+    const result = await conversationalVoiceAgent.processVoicePayment(userId, voiceCommand);
+
+    logger.success('Voice payment processed', { success: result.success }, 'VOICE_AI');
+
+    res.json(result);
+  })
+);
+
 // =====================================
 // PROPERTY APPLICATIONS & PUBLIC BROWSING
 // =====================================
@@ -4602,6 +4883,24 @@ app.post('/api/arc/payment/send', async (req: Request, res: Response) => {
       return res.status(400).json(result);
     }
 
+    // RECORD PAYMENT DECISION ON-CHAIN
+    let onChainDecisionId: string | undefined;
+    try {
+      const onChainResult = await aiDecisionsContract.recordPaymentDecision({
+        tenant: fromWalletId, // Using wallet ID as identifier
+        landlord: toAddress,
+        amountUSDC: amount,
+        approved: true,
+        confidenceScore: 100, // User-initiated payment = 100% confidence
+        reasoning: `User-initiated rent payment via Arc Testnet. Payment ID: ${paymentId || 'N/A'}. Lease ID: ${leaseId || 'N/A'}`
+      });
+      
+      onChainDecisionId = onChainResult.decisionId;
+      console.log(`✅ [Blockchain] Payment decision recorded on-chain: ${onChainDecisionId}`);
+    } catch (error) {
+      console.error('⚠️ [Blockchain] Failed to record payment decision on-chain:', error);
+    }
+
     // Payment successful OR still processing - update payment record if paymentId provided
     if (paymentId) {
       // For now, mark as completed if we have a transaction hash
@@ -4618,9 +4917,48 @@ app.post('/api/arc/payment/send', async (req: Request, res: Response) => {
           transaction_hash: result.transactionHash || result.transactionId,
           payment_date: new Date().toISOString(),
           blockchain_network: 'arc',
+          blockchain_decision_id: onChainDecisionId, // Link to on-chain decision
           notes: paymentNotes
         })
         .eq('id', paymentId);
+
+      // RECORD PAYMENT ON RENTFLOW CORE CONTRACT
+      if (rentFlowCoreService.isReady() && leaseId) {
+        try {
+          // Get lease to get blockchain lease ID
+          const { data: lease } = await supabase
+            .from('leases')
+            .select('blockchain_lease_id')
+            .eq('id', leaseId)
+            .single();
+
+          if (lease?.blockchain_lease_id) {
+            const coreResult = await rentFlowCoreService.recordRentPayment({
+              leaseId: lease.blockchain_lease_id,
+              amount: amount
+            });
+
+            if (coreResult.success) {
+              console.log('✅ [RentFlowCore] Rent payment recorded on-chain');
+            }
+          }
+        } catch (coreError) {
+          console.error('⚠️ [RentFlowCore] Failed to record rent payment on-chain:', coreError);
+        }
+      }
+
+      // Mark payment as executed on-chain
+      if (onChainDecisionId && result.transactionHash) {
+        try {
+          await aiDecisionsContract.markPaymentExecuted(
+            onChainDecisionId,
+            result.transactionHash
+          );
+          console.log(`✅ [Blockchain] Payment marked as executed on-chain`);
+        } catch (error) {
+          console.error('⚠️ [Blockchain] Failed to mark payment executed on-chain:', error);
+        }
+      }
 
       if (updateError) {
         console.error('❌ [ArcPayment] Failed to update payment record:', updateError);
@@ -4723,6 +5061,223 @@ app.get('/api/arc/payment/transaction/:transactionId', async (req: Request, res:
     });
   } catch (error) {
     console.error('❌ [ArcPayment] Error fetching transaction:', error);
+    res.status(500).json({
+      success: false,
+      error: error instanceof Error ? error.message : 'Unknown error'
+    });
+  }
+});
+
+// ==================== Analytics Dashboard ====================
+
+// Get property management analytics
+app.get('/api/analytics/property-management', async (req: Request, res: Response) => {
+  try {
+    // Get total properties
+    const { count: totalProperties, error: propError } = await supabase
+      .from('properties')
+      .select('*', { count: 'exact', head: true });
+
+    // Get active leases
+    const { count: activeLeases, error: leaseError } = await supabase
+      .from('leases')
+      .select('*', { count: 'exact', head: true })
+      .eq('status', 'active');
+
+    // Get pending applications
+    const { count: pendingApplications, error: appError } = await supabase
+      .from('property_applications')
+      .select('*', { count: 'exact', head: true })
+      .eq('status', 'pending');
+
+    // Get maintenance requests
+    const { count: maintenanceRequests, error: maintError } = await supabase
+      .from('maintenance_requests')
+      .select('*', { count: 'exact', head: true })
+      .in('status', ['pending', 'approved', 'in_progress']);
+
+    if (propError || leaseError || appError || maintError) {
+      throw new Error('Failed to fetch analytics data');
+    }
+
+    res.json({
+      success: true,
+      data: {
+        totalProperties: totalProperties || 0,
+        activeLeases: activeLeases || 0,
+        pendingApplications: pendingApplications || 0,
+        maintenanceRequests: maintenanceRequests || 0
+      }
+    });
+  } catch (error) {
+    console.error('❌ [Analytics] Error fetching property management data:', error);
+    res.status(500).json({
+      success: false,
+      error: error instanceof Error ? error.message : 'Unknown error'
+    });
+  }
+});
+
+// Get payment analytics
+app.get('/api/analytics/payments', async (req: Request, res: Response) => {
+  try {
+    // Get all payments with status
+    const { data: allPayments, error: paymentError } = await supabase
+      .from('rent_payments')
+      .select('*');
+
+    if (paymentError) throw paymentError;
+
+    // Calculate analytics
+    const total = allPayments?.length || 0;
+    const completed = allPayments?.filter(p => p.status === 'completed').length || 0;
+    const pending = allPayments?.filter(p => p.status === 'pending').length || 0;
+    const late = allPayments?.filter(p => p.status === 'late').length || 0;
+    const failed = allPayments?.filter(p => p.status === 'failed').length || 0;
+
+    const totalRevenue = allPayments
+      ?.filter(p => p.status === 'completed')
+      .reduce((sum, p) => sum + parseFloat(p.amount_usdc || '0'), 0) || 0;
+
+    const expectedRevenue = allPayments
+      ?.reduce((sum, p) => sum + parseFloat(p.amount_usdc || '0'), 0) || 0;
+
+    const collectionRate = total > 0 ? (completed / total) * 100 : 0;
+
+    // Get this month's data
+    const now = new Date();
+    const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
+    const monthEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0).toISOString();
+
+    const monthPayments = allPayments?.filter(p => 
+      p.created_at >= monthStart && p.created_at <= monthEnd
+    ) || [];
+
+    const monthRevenue = monthPayments
+      .filter(p => p.status === 'completed')
+      .reduce((sum, p) => sum + parseFloat(p.amount_usdc || '0'), 0);
+
+    // Get recent payments (last 5)
+    const recentPayments = allPayments
+      ?.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+      .slice(0, 5);
+
+    res.json({
+      success: true,
+      data: {
+        summary: {
+          totalPayments: total,
+          completedPayments: completed,
+          pendingPayments: pending,
+          latePayments: late,
+          failedPayments: failed,
+          totalRevenue,
+          expectedRevenue,
+          collectionRate,
+          monthlyRevenue: monthRevenue
+        },
+        recentPayments: recentPayments || []
+      }
+    });
+  } catch (error) {
+    console.error('❌ [Analytics] Error fetching payment data:', error);
+    res.status(500).json({
+      success: false,
+      error: error instanceof Error ? error.message : 'Unknown error'
+    });
+  }
+});
+
+// Get tenant analytics
+app.get('/api/analytics/tenants', async (req: Request, res: Response) => {
+  try {
+    // Get tenant distribution
+    const { data: tenantData, error: tenantError } = await supabase
+      .from('users')
+      .select('role')
+      .in('role', ['tenant', 'landlord', 'property_manager']);
+
+    if (tenantError) throw tenantError;
+
+    // Count roles manually
+    const roleCounts: Record<string, number> = {};
+    tenantData?.forEach(user => {
+      roleCounts[user.role] = (roleCounts[user.role] || 0) + 1;
+    });
+
+    // Get payment behavior data
+    const { data: paymentBehavior, error: behaviorError } = await supabase
+      .from('rent_payments')
+      .select('tenant_id, status, amount_usdc, created_at')
+      .order('created_at', { ascending: false })
+      .limit(100);
+
+    if (behaviorError) throw behaviorError;
+
+    // Calculate tenant metrics
+    const tenantIds = [...new Set(paymentBehavior?.map(p => p.tenant_id) || [])];
+    
+    // Get tenant details
+    const { data: tenantDetails } = await supabase
+      .from('users')
+      .select('id, full_name, email')
+      .in('id', tenantIds);
+
+    // Payment statistics by tenant
+    const tenantStats: any = {};
+    tenantIds.forEach(id => {
+      const tenantPayments = paymentBehavior?.filter(p => p.tenant_id === id) || [];
+      const completed = tenantPayments.filter(p => p.status === 'completed').length;
+      const total = tenantPayments.length;
+      const onTimeRate = total > 0 ? (completed / total) * 100 : 0;
+      
+      tenantStats[id] = {
+        totalPayments: total,
+        onTimePayments: completed,
+        onTimeRate,
+        totalAmount: tenantPayments
+          .filter(p => p.status === 'completed')
+          .reduce((sum, p) => sum + parseFloat(p.amount_usdc || '0'), 0)
+      };
+    });
+
+    res.json({
+      success: true,
+      data: {
+        userDistribution: tenantData || [],
+        tenantStats,
+        tenantDetails: tenantDetails || []
+      }
+    });
+  } catch (error) {
+    console.error('❌ [Analytics] Error fetching tenant data:', error);
+    res.status(500).json({
+      success: false,
+      error: error instanceof Error ? error.message : 'Unknown error'
+    });
+  }
+});
+
+// Get AI decision analytics
+app.get('/api/analytics/ai-decisions', async (req: Request, res: Response) => {
+  try {
+    // Get AI decision statistics from blockchain
+    const totalDecisions = await aiDecisionsContract.getTotalPaymentDecisions();
+    
+    // Get recent decisions
+    // This would require querying the blockchain contract for recent decisions
+    // For now, we'll return what we can get easily
+    
+    res.json({
+      success: true,
+      data: {
+        totalAIDecisions: totalDecisions,
+        // More detailed analytics could be added here
+        // by querying the blockchain contract directly
+      }
+    });
+  } catch (error) {
+    console.error('❌ [Analytics] Error fetching AI decision data:', error);
     res.status(500).json({
       success: false,
       error: error instanceof Error ? error.message : 'Unknown error'
@@ -6142,6 +6697,145 @@ app.post('/api/leases/:leaseId/migrate-chat', async (req: Request, res: Response
     });
   } catch (error) {
     logger.error('Error migrating chat', error, 'CHAT');
+    res.status(500).json({
+      success: false,
+      error: error instanceof Error ? error.message : 'Unknown error'
+    });
+  }
+});
+
+// ==================== Tenant Reviews/Ratings ====================
+
+// Create a new tenant review
+app.post('/api/tenant-reviews',
+  validateBody({
+    lease_id: { type: 'uuid', required: true },
+    reviewer_id: { type: 'uuid', required: true },
+    tenant_id: { type: 'uuid', required: true },
+    rating: { type: 'number', required: true, min: 1, max: 5 },
+    review_text: { type: 'string', required: false },
+    review_type: { type: 'string', required: false, enum: ['during_tenancy', 'post_tenancy', 'property_manager'] },
+    is_anonymous: { type: 'boolean', required: false }
+  }),
+  asyncHandler(async (req: Request, res: Response) => {
+    const reviewData = req.body;
+
+    // Verify that reviewer is property manager for this lease
+    const { data: lease } = await supabase
+      .from('leases')
+      .select('property_id')
+      .eq('id', reviewData.lease_id)
+      .single();
+
+    if (!lease) {
+      throw ApiErrors.notFound('Lease not found');
+    }
+
+    const { data: property } = await supabase
+      .from('properties')
+      .select('owner_id')
+      .eq('id', lease.property_id)
+      .single();
+
+    if (!property || property.owner_id !== reviewData.reviewer_id) {
+      throw ApiErrors.forbidden('Only property managers can review tenants');
+    }
+
+    const { data, error } = await supabase
+      .from('tenant_reviews')
+      .insert([reviewData])
+      .select()
+      .single();
+
+    if (error) throw ApiErrors.internal('Failed to create tenant review');
+
+    res.status(201).json({ success: true, data });
+  })
+);
+
+// Get tenant reviews
+app.get('/api/tenant-reviews', async (req: Request, res: Response) => {
+  try {
+    const { tenant_id, reviewer_id, lease_id } = req.query;
+
+    let query = supabase
+      .from('tenant_reviews')
+      .select(`
+        *,
+        tenant:users(full_name, email),
+        reviewer:users(full_name, email)
+      `);
+
+    if (tenant_id) {
+      query = query.eq('tenant_id', tenant_id);
+    }
+
+    if (reviewer_id) {
+      query = query.eq('reviewer_id', reviewer_id);
+    }
+
+    if (lease_id) {
+      query = query.eq('lease_id', lease_id);
+    }
+
+    const { data, error } = await query.order('created_at', { ascending: false });
+
+    if (error) throw error;
+
+    res.json({ success: true, data: data || [] });
+  } catch (error) {
+    console.error('Error fetching tenant reviews:', error);
+    res.status(500).json({
+      success: false,
+      error: error instanceof Error ? error.message : 'Unknown error'
+    });
+  }
+});
+
+// Get tenant review statistics
+app.get('/api/tenant-reviews/statistics/:tenantId', async (req: Request, res: Response) => {
+  try {
+    const { tenantId } = req.params;
+
+    const { data: reviews, error } = await supabase
+      .from('tenant_reviews')
+      .select('rating')
+      .eq('tenant_id', tenantId);
+
+    if (error) throw error;
+
+    if (!reviews || reviews.length === 0) {
+      return res.json({
+        success: true,
+        data: {
+          averageRating: 0,
+          totalReviews: 0,
+          ratingDistribution: { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 }
+        }
+      });
+    }
+
+    // Calculate statistics
+    const totalReviews = reviews.length;
+    const sumRatings = reviews.reduce((sum, review) => sum + review.rating, 0);
+    const averageRating = sumRatings / totalReviews;
+
+    // Rating distribution
+    const ratingDistribution = { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 };
+    reviews.forEach(review => {
+      ratingDistribution[review.rating as keyof typeof ratingDistribution]++;
+    });
+
+    res.json({
+      success: true,
+      data: {
+        averageRating: parseFloat(averageRating.toFixed(2)),
+        totalReviews,
+        ratingDistribution
+      }
+    });
+  } catch (error) {
+    console.error('Error fetching tenant review statistics:', error);
     res.status(500).json({
       success: false,
       error: error instanceof Error ? error.message : 'Unknown error'

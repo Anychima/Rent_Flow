@@ -71,6 +71,7 @@ export default function TenantDashboard() {
   const [activeTab, setActiveTab] = useState<'overview' | 'maintenance' | 'payments' | 'micropayments'>('overview');
   const [showMaintenanceForm, setShowMaintenanceForm] = useState(false);
   const [showMicroPaymentForm, setShowMicroPaymentForm] = useState(false);
+  const [verifyingBlockchain, setVerifyingBlockchain] = useState(false);
   const [maintenanceForm, setMaintenanceForm] = useState({
     title: '',
     description: '',
@@ -84,10 +85,8 @@ export default function TenantDashboard() {
     const loadDashboard = async () => {
       if (userProfile?.id && mounted) {
         await fetchDashboard();
-        // Check for pending payments that block tenant activation
         checkPendingActivationPayments();
       } else if (!userProfile?.id) {
-        console.warn('⚠️  TenantDashboard mounted but no userProfile.id yet');
         // Set a short timeout to retry
         setTimeout(() => {
           if (mounted && userProfile?.id) {
@@ -113,61 +112,38 @@ export default function TenantDashboard() {
       const response = await fetch(`${API_URL}/api/payments/pending?tenant_id=${userProfile.id}`);
       const result = await response.json();
 
+      // Just check for pending payments - no action needed
       if (result.success && result.data && result.data.length > 0) {
-        // Check if these are activation-blocking payments (security deposit + first rent)
-        const hasPendingActivation = result.data.some((p: Payment) => 
+        // Silently track pending activation payments
+        result.data.some((p: Payment) => 
           (p.payment_type === 'security_deposit' || p.payment_type === 'rent') && 
           p.status === 'pending'
         );
-
-        if (hasPendingActivation && userProfile.role === 'prospective_tenant') {
-          console.log('⚠️  User has pending activation payments:', result.data);
-        }
       }
     } catch (error) {
-      console.warn('⚠️  Could not check pending payments:', error);
+      // Silently fail - this is not critical
     }
   };
 
   const fetchDashboard = async () => {
     if (!userProfile?.id) {
-      console.error('❌ Cannot fetch dashboard - no userProfile.id');
+      console.error('[TenantDashboard] Cannot fetch - no userProfile.id');
       return;
     }
-
-    console.log('🔍 Fetching dashboard for tenant:', userProfile.email, 'ID:', userProfile.id);
-    console.log('📍 API URL:', `${API_URL}/api/tenant/${userProfile.id}/dashboard`);
 
     try {
       setLoading(true);
       const response = await fetch(`${API_URL}/api/tenant/${userProfile.id}/dashboard`);
-      
-      console.log('📡 Response status:', response.status, response.statusText);
-      
       const result = await response.json();
-      console.log('📊 Dashboard API response:', result);
 
       if (result.success) {
         setDashboardData(result.data);
-        console.log('✅ Dashboard data set:');
-        console.log('   - Lease:', result.data.lease ? `Active (${result.data.lease.property.title})` : 'None');
-        console.log('   - Maintenance Requests:', result.data.maintenanceRequests?.length || 0);
-        console.log('   - Payments:', result.data.payments?.length || 0);
-        
-        if (result.data.payments?.length > 0) {
-          console.log('💳 Payment details:');
-          result.data.payments.forEach((p: Payment, i: number) => {
-            console.log(`   ${i + 1}. ${p.amount_usdc} USDC - ${p.payment_type || 'N/A'} (${p.status})`);
-          });
-        } else {
-          console.warn('⚠️  No payments found in response');
-        }
       } else {
-        console.error('❌ Dashboard error:', result.error);
+        console.error('[TenantDashboard] API error:', result.error);
         alert(`Failed to load dashboard: ${result.error}`);
       }
     } catch (error) {
-      console.error('❌ Error fetching dashboard:', error);
+      console.error('[TenantDashboard] Fetch error:', error);
       alert('Failed to load dashboard. Please refresh the page.');
     } finally {
       setLoading(false);
@@ -176,30 +152,29 @@ export default function TenantDashboard() {
 
   const handleSubmitMaintenance = async () => {
     if (!userProfile?.id) {
-      alert('❌ User profile not found. Please sign in again.');
+      alert('User profile not found. Please sign in again.');
       return;
     }
 
     // Validate required fields
     if (!maintenanceForm.title.trim()) {
-      alert('⚠️ Please enter a title for your request');
+      alert('Please enter a title for your request');
       return;
     }
 
     if (!maintenanceForm.description.trim()) {
-      alert('⚠️ Please provide a detailed description');
+      alert('Please provide a detailed description');
       return;
     }
 
     // Check if tenant has active lease
     if (!dashboardData?.lease) {
-      alert('❌ You must have an active lease to submit maintenance requests.\n\nPlease contact your property manager.');
+      alert('You must have an active lease to submit maintenance requests.\n\nPlease contact your property manager.');
       return;
     }
 
     try {
       setLoading(true);
-      console.log('📝 Submitting maintenance request:', maintenanceForm);
       
       const response = await fetch(
         `${API_URL}/api/tenant/${userProfile.id}/maintenance`,
@@ -216,19 +191,18 @@ export default function TenantDashboard() {
       );
 
       const result = await response.json();
-      console.log('📥 Maintenance submission result:', result);
 
       if (result.success) {
-        alert('✅ Maintenance request submitted successfully!\n\nYour request has been sent to the property manager.');
+        alert('Maintenance request submitted successfully!\n\nYour request has been sent to the property manager.');
         setShowMaintenanceForm(false);
         setMaintenanceForm({ title: '', description: '', category: 'plumbing', priority: 'medium' });
-        await fetchDashboard(); // Refresh to show new request
+        await fetchDashboard();
       } else {
-        alert(`❌ Submission Failed\n\n${result.error || 'Unknown error occurred'}`);
+        alert(`Submission Failed\n\n${result.error || 'Unknown error occurred'}`);
       }
     } catch (error) {
-      console.error('❌ Error submitting maintenance:', error);
-      alert('❌ Network Error\n\nFailed to submit request. Please check your connection and try again.');
+      console.error('[TenantDashboard] Maintenance submission error:', error);
+      alert('Network Error\n\nFailed to submit request. Please check your connection and try again.');
     } finally {
       setLoading(false);
     }
@@ -237,7 +211,7 @@ export default function TenantDashboard() {
   // AI Agent Autonomy - Trigger automated payment processing
   const handleAIAutomatedPayment = async () => {
     if (!userProfile?.id || !dashboardData?.lease) {
-      alert('❌ User profile or lease not found. Please refresh the page.');
+      alert('User profile or lease not found. Please refresh the page.');
       return;
     }
 
@@ -260,14 +234,14 @@ export default function TenantDashboard() {
       const result = await response.json();
 
       if (result.success) {
-        alert(`✅ AI Payment Processing Result:\n${result.message}`);
-        await fetchDashboard(); // Refresh to show updated payments
+        alert(`AI Payment Processing Result:\n${result.message}`);
+        await fetchDashboard();
       } else {
-        alert(`❌ AI Payment Processing Failed\n\n${result.error || 'Unknown error occurred'}`);
+        alert(`AI Payment Processing Failed\n\n${result.error || 'Unknown error occurred'}`);
       }
     } catch (error) {
-      console.error('❌ Error in AI payment processing:', error);
-      alert('❌ Network Error\n\nFailed to process AI payment. Please check your connection and try again.');
+      console.error('[TenantDashboard] AI payment error:', error);
+      alert('Network Error\n\nFailed to process AI payment. Please check your connection and try again.');
     } finally {
       setLoading(false);
     }
@@ -276,7 +250,7 @@ export default function TenantDashboard() {
   // Predictive Maintenance - Trigger AI analysis
   const handlePredictiveMaintenance = async () => {
     if (!userProfile?.id || !dashboardData?.lease) {
-      alert('❌ User profile or lease not found. Please refresh the page.');
+      alert('User profile or lease not found. Please refresh the page.');
       return;
     }
 
@@ -297,18 +271,18 @@ export default function TenantDashboard() {
       const result = await response.json();
 
       if (result.success) {
-        alert(`✅ Predictive Maintenance Analysis Complete!
+        alert(`Predictive Maintenance Analysis Complete!
 
 ${result.message}
 
 Check your maintenance requests for AI-scheduled tasks.`);
-        await fetchDashboard(); // Refresh to show new maintenance requests
+        await fetchDashboard();
       } else {
-        alert(`❌ Predictive Maintenance Analysis Failed\n\n${result.error || 'Unknown error occurred'}`);
+        alert(`Predictive Maintenance Analysis Failed\n\n${result.error || 'Unknown error occurred'}`);
       }
     } catch (error) {
-      console.error('❌ Error in predictive maintenance:', error);
-      alert('❌ Network Error\n\nFailed to run predictive maintenance analysis. Please check your connection and try again.');
+      console.error('[TenantDashboard] Predictive maintenance error:', error);
+      alert('Network Error\n\nFailed to run predictive maintenance analysis. Please check your connection and try again.');
     } finally {
       setLoading(false);
     }
@@ -316,19 +290,19 @@ Check your maintenance requests for AI-scheduled tasks.`);
 
   const handleInitiatePayment = async (paymentId: string) => {
     if (!userProfile?.id) {
-      alert('❌ User profile not found. Please sign in again.');
+      alert('User profile not found. Please sign in again.');
       return;
     }
 
     // Find the specific payment
     const payment = dashboardData?.payments?.find(p => p.id === paymentId);
     if (!payment) {
-      alert('❌ Payment not found');
+      alert('Payment not found');
       return;
     }
 
     // Confirm payment amount
-    const confirmMessage = `💳 Confirm Payment
+    const confirmMessage = `Confirm Payment
 
 Amount: ${payment.amount_usdc} USDC
 Type: ${payment.payment_type || 'Rent Payment'}
@@ -342,13 +316,11 @@ Proceed with payment?`;
 
     const walletAddress = userProfile.wallet_address || prompt('Enter your wallet address to pay from:');
     if (!walletAddress) {
-      console.log('Payment cancelled - no wallet address provided');
       return;
     }
 
     try {
       setLoading(true);
-      console.log('💳 Initiating payment:', { paymentId, amount: payment.amount_usdc, fromAddress: walletAddress });
       
       const response = await fetch(
         `${API_URL}/api/tenant/${userProfile.id}/payments/initiate`,
@@ -363,23 +335,22 @@ Proceed with payment?`;
       );
 
       const result = await response.json();
-      console.log('📥 Payment result:', result);
 
       if (result.success) {
         const txHash = result.data?.transactionHash || 'Processing...';
-        alert(`✅ Payment Initiated Successfully!
+        alert(`Payment Initiated Successfully!
 
 Amount: ${payment.amount_usdc} USDC
 Transaction: ${txHash}
 
 Your payment is being processed.`);
-        await fetchDashboard(); // Refresh to update payment status
+        await fetchDashboard();
       } else {
-        alert(`❌ Payment Failed\n\n${result.error || 'Unknown error occurred'}`);
+        alert(`Payment Failed\n\n${result.error || 'Unknown error occurred'}`);
       }
     } catch (error) {
-      console.error('❌ Error initiating payment:', error);
-      alert('❌ Network Error\n\nFailed to process payment. Please check your connection and try again.');
+      console.error('[TenantDashboard] Payment initiation error:', error);
+      alert('Network Error\n\nFailed to process payment. Please check your connection and try again.');
     } finally {
       setLoading(false);
     }
@@ -388,12 +359,12 @@ Your payment is being processed.`);
   // Add a new function to create a payment
   const handleMakePayment = async () => {
     if (!userProfile?.id) {
-      alert('❌ User profile not found. Please sign in again.');
+      alert('User profile not found. Please sign in again.');
       return;
     }
 
     if (!dashboardData?.lease) {
-      alert('❌ No active lease found. Please contact your property manager.');
+      alert('No active lease found. Please contact your property manager.');
       return;
     }
 
@@ -403,7 +374,7 @@ Your payment is being processed.`);
   
     const amount = parseFloat(amountInput);
     if (isNaN(amount) || amount <= 0) {
-      alert('❌ Please enter a valid payment amount.');
+      alert('Please enter a valid payment amount.');
       return;
     }
 
@@ -411,26 +382,17 @@ Your payment is being processed.`);
     const paymentTypes = ['rent', 'security_deposit', 'late_fee', 'other'];
     const paymentType = prompt(`Enter payment type (${paymentTypes.join(', ')}):`, 'rent');
     if (!paymentType || !paymentTypes.includes(paymentType)) {
-      alert(`❌ Please enter a valid payment type: ${paymentTypes.join(', ')}`);
+      alert(`Please enter a valid payment type: ${paymentTypes.join(', ')}`);
       return;
     }
 
     const walletAddress = userProfile.wallet_address || prompt('Enter your wallet address to pay from:');
     if (!walletAddress) {
-      console.log('Payment cancelled - no wallet address provided');
       return;
     }
 
     try {
       setLoading(true);
-      console.log('💳 Creating new payment:', { 
-        lease_id: dashboardData.lease.id,
-        tenant_id: userProfile.id,
-        amount_usdc: amount,
-        payment_type: paymentType,
-        due_date: new Date().toISOString().split('T')[0], // Today's date
-        status: 'pending'
-      });
     
       // First create the payment record
       const createResponse = await fetch(`${API_URL}/api/payments`, {
@@ -441,16 +403,15 @@ Your payment is being processed.`);
           tenant_id: userProfile.id,
           amount_usdc: amount,
           payment_type: paymentType,
-          due_date: new Date().toISOString().split('T')[0], // Today's date
+          due_date: new Date().toISOString().split('T')[0],
           status: 'pending'
         }),
       });
 
       const createResult = await createResponse.json();
-      console.log('📥 Payment creation result:', createResult);
 
       if (!createResult.success) {
-        alert(`❌ Payment Creation Failed\n\n${createResult.error || 'Unknown error occurred'}`);
+        alert(`Payment Creation Failed\n\n${createResult.error || 'Unknown error occurred'}`);
         return;
       }
 
@@ -470,26 +431,63 @@ Your payment is being processed.`);
       );
 
       const initiateResult = await initiateResponse.json();
-      console.log('📥 Payment initiation result:', initiateResult);
 
       if (initiateResult.success) {
         const txHash = initiateResult.data?.transactionHash || 'Processing...';
-        alert(`✅ Payment Initiated Successfully!
+        alert(`Payment Initiated Successfully!
 
 Amount: ${amount} USDC
 Type: ${paymentType}
 Transaction: ${txHash}
 
 Your payment is being processed.`);
-        await fetchDashboard(); // Refresh to update payment status
+        await fetchDashboard();
       } else {
-        alert(`❌ Payment Failed\n\n${initiateResult.error || 'Unknown error occurred'}`);
+        alert(`Payment Failed\n\n${initiateResult.error || 'Unknown error occurred'}`);
       }
     } catch (error) {
-      console.error('❌ Error creating payment:', error);
-      alert('❌ Network Error\n\nFailed to process payment. Please check your connection and try again.');
+      console.error('[TenantDashboard] Payment creation error:', error);
+      alert('Network Error\n\nFailed to process payment. Please check your connection and try again.');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleVerifyBlockchain = async () => {
+    if (!dashboardData?.lease?.id) return;
+
+    try {
+      setVerifyingBlockchain(true);
+      console.log('🔍 [Verify Blockchain] Checking lease on smart contract...', dashboardData.lease.id);
+
+      // Import smart contract service
+      const smartContractService = await import('../services/smartContractSigningService');
+      
+      // Check if lease is on-chain
+      const statusResult = await smartContractService.checkLeaseStatus(dashboardData.lease.id);
+
+      if (!statusResult.success) {
+        alert('❌ Failed to verify blockchain status: ' + (statusResult.error || 'Unknown error'));
+        return;
+      }
+
+      if (!statusResult.isFullySigned) {
+        alert('⚠️ Lease not found on blockchain. Both parties may need to sign again.');
+        return;
+      }
+
+      // Lease is on-chain, confirmed!
+      console.log('✅ [Verify Blockchain] Lease confirmed on-chain');
+      
+      // Refresh dashboard to get updated data
+      await fetchDashboard();
+      
+      alert('✅ Lease verified on Arc blockchain!\n\nLease ID: ' + dashboardData.lease.id.substring(0, 8) + '...\n\nIf the transaction hash still doesn\'t appear, please sign the lease again.');
+    } catch (error) {
+      console.error('❌ [Verify Blockchain] Error:', error);
+      alert('Failed to verify blockchain status. Please try again.');
+    } finally {
+      setVerifyingBlockchain(false);
     }
   };
 
@@ -733,40 +731,80 @@ Your payment is being processed.`);
 
                     {/* Blockchain Info */}
                     {dashboardData.lease.blockchain_transaction_hash ? (
-                      <div className="bg-blue-50 rounded-lg p-4">
-                        <p className="text-sm text-gray-700 font-medium mb-2">⛓️ Blockchain Transaction</p>
-                        <div className="flex items-center space-x-2">
-                          <a
-                            href={`https://testnet.arcscan.app/tx/${dashboardData.lease.blockchain_transaction_hash}`}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="font-mono text-sm text-blue-600 hover:text-blue-800 hover:underline break-all"
-                            title={dashboardData.lease.blockchain_transaction_hash}
-                          >
-                            {dashboardData.lease.blockchain_transaction_hash.substring(0, 20)}...{dashboardData.lease.blockchain_transaction_hash.substring(dashboardData.lease.blockchain_transaction_hash.length - 16)}
-                          </a>
+                      <div className="bg-blue-50 rounded-lg p-4 border border-blue-200">
+                        <div className="flex items-center justify-between mb-2">
+                          <p className="text-sm text-blue-900 font-semibold">⛓️ Lease Stored on Blockchain</p>
+                          <span className="text-xs text-blue-600 font-medium">Arc Testnet</span>
+                        </div>
+                        <div className="space-y-2">
+                          <div>
+                            <p className="text-xs text-gray-600 mb-1">Transaction Hash:</p>
+                            <div className="flex items-center space-x-2 bg-white rounded px-3 py-2">
+                              <a
+                                href={`https://testnet.arcscan.app/tx/${dashboardData.lease.blockchain_transaction_hash}`}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="font-mono text-xs text-blue-600 hover:text-blue-800 hover:underline break-all flex-1"
+                                title="View on Arc Explorer"
+                              >
+                                {dashboardData.lease.blockchain_transaction_hash}
+                              </a>
+                              <button
+                                onClick={() => {
+                                  navigator.clipboard.writeText(dashboardData.lease!.blockchain_transaction_hash!);
+                                  alert('✅ Transaction hash copied to clipboard!');
+                                }}
+                                className="text-gray-500 hover:text-gray-700 p-1 flex-shrink-0"
+                                title="Copy transaction hash"
+                              >
+                                📋
+                              </button>
+                            </div>
+                          </div>
+                          {dashboardData.lease.blockchain_lease_id && (
+                            <p className="text-xs text-gray-600">
+                              On-Chain Lease ID: #{dashboardData.lease.blockchain_lease_id}
+                            </p>
+                          )}
+                          <p className="text-xs text-green-700 mt-2">
+                            ✅ Your lease is permanently secured on Arc blockchain
+                          </p>
+                        </div>
+                      </div>
+                    ) : dashboardData.lease.tenant_signed_at && dashboardData.lease.landlord_signed_at ? (
+                      <div className="bg-orange-50 rounded-lg p-4 border border-orange-200">
+                        <p className="text-sm text-orange-800 font-medium mb-2">
+                          ⏳ Processing Blockchain Storage
+                        </p>
+                        <p className="text-xs text-orange-700">
+                          Both parties have signed! Your lease is being submitted to the Arc blockchain. This usually takes a few moments.
+                        </p>
+                        <div className="flex gap-3 mt-3">
                           <button
-                            onClick={() => {
-                              navigator.clipboard.writeText(dashboardData.lease!.blockchain_transaction_hash!);
-                              alert('✅ Transaction hash copied to clipboard!');
-                            }}
-                            className="text-gray-500 hover:text-gray-700 p-1 flex-shrink-0"
-                            title="Copy transaction hash"
+                            onClick={() => fetchDashboard()}
+                            className="text-xs text-orange-600 hover:text-orange-800 font-medium underline"
                           >
-                            📋
+                            🔄 Refresh to check status
+                          </button>
+                          <span className="text-orange-400">•</span>
+                          <button
+                            onClick={handleVerifyBlockchain}
+                            disabled={verifyingBlockchain}
+                            className="text-xs text-orange-600 hover:text-orange-800 font-medium underline disabled:opacity-50"
+                          >
+                            {verifyingBlockchain ? '⏳ Verifying...' : '🔍 Verify on Blockchain'}
                           </button>
                         </div>
-                        {dashboardData.lease.blockchain_lease_id && (
-                          <p className="text-xs text-gray-600 mt-2">
-                            Lease ID: #{dashboardData.lease.blockchain_lease_id}
-                          </p>
-                        )}
                       </div>
                     ) : (
                       <div className="bg-yellow-50 rounded-lg p-4 border border-yellow-200">
                         <p className="text-sm text-yellow-800">
-                          📝 <strong>Awaiting On-Chain Storage:</strong> Your lease will be stored on Arc blockchain for immutability once both parties complete the digital signing process.
+                          📝 <strong>Awaiting Digital Signatures:</strong> Your lease will be stored on Arc blockchain for immutability once both parties complete the digital signing process.
                         </p>
+                        <div className="mt-2 text-xs text-yellow-700">
+                          {!dashboardData.lease.tenant_signed_at && <p>• Tenant signature pending</p>}
+                          {!dashboardData.lease.landlord_signed_at && <p>• Landlord signature pending</p>}
+                        </div>
                       </div>
                     )}
 

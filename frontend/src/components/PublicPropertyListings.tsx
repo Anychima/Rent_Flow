@@ -1,8 +1,10 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Search, MapPin, Home, Bed, Bath, DollarSign, Heart, Filter, User, LogOut, FileText, BarChart2, Menu, X } from 'lucide-react';
+import { Search, MapPin, Home, Bed, Bath, DollarSign, Heart, Filter, User, LogOut, FileText, BarChart2, Menu, X, Wallet } from 'lucide-react';
 import axios from 'axios';
 import { useAuth } from '../contexts/AuthContext';
+import { useWallet } from '../contexts/WalletContext';
+import WalletConnectionModal from './WalletConnectionModal';
 import PropertyComparisonModal from './PropertyComparisonModal';
 import { PropertyListSkeleton } from './SkeletonLoader';
 
@@ -33,11 +35,7 @@ interface Property {
 const PublicPropertyListings: React.FC = () => {
   const navigate = useNavigate();
   const { user, userProfile, signOut } = useAuth();
-  
-  console.log('🏠 [PublicPropertyListings] Component rendered');
-  console.log('   User:', user);
-  console.log('   UserProfile:', userProfile);
-  console.log('   Is Authenticated:', !!user && !!userProfile);
+  const { walletAddress, walletId, isConnected, disconnectWallet } = useWallet();
   
   const [properties, setProperties] = useState<Property[]>([]);
   const [filteredProperties, setFilteredProperties] = useState<Property[]>([]);
@@ -60,6 +58,9 @@ const PublicPropertyListings: React.FC = () => {
   
   // Mobile menu state
   const [showMobileMenu, setShowMobileMenu] = useState(false);
+  
+  // Wallet modal state
+  const [showWalletModal, setShowWalletModal] = useState(false);
 
   // Available amenities for filtering
   const availableAmenities = [
@@ -80,14 +81,20 @@ const PublicPropertyListings: React.FC = () => {
 
   const fetchProperties = async () => {
     try {
+      console.log('[PublicPropertyListings] Fetching from:', `${API_URL}/api/properties/public`);
       const response = await axios.get(`${API_URL}/api/properties/public`);
+      console.log('[PublicPropertyListings] Response:', response.data);
+      
       if (response.data.success) {
+        console.log('[PublicPropertyListings] Properties loaded:', response.data.data.length);
         setProperties(response.data.data);
       } else {
+        console.error('[PublicPropertyListings] API returned success=false');
         setProperties([]);
       }
     } catch (error: any) {
-      console.error('Error fetching properties:', error);
+      console.error('[PublicPropertyListings] Error fetching properties:', error);
+      console.error('[PublicPropertyListings] Error details:', error.response?.data || error.message);
       setProperties([]);
     } finally {
       setLoading(false);
@@ -171,13 +178,19 @@ const PublicPropertyListings: React.FC = () => {
     );
   };
 
+  const handleWalletConnected = (_wId: string, wAddress: string) => {
+    console.log('✅ Wallet connected:', wAddress);
+    setShowWalletModal(false);
+  };
+
+  const handleDisconnectWallet = async () => {
+    if (window.confirm('Are you sure you want to disconnect your wallet?')) {
+      await disconnectWallet();
+      alert('✅ Wallet disconnected successfully!');
+    }
+  };
+
   const applyFilters = () => {
-    console.log('🔍 [PublicPropertyListings] Applying filters...');
-    console.log('   Total properties:', properties.length);
-    console.log('   Search term:', searchTerm);
-    console.log('   Filter type:', filterType);
-    console.log('   Price range:', priceRange);
-    
     let filtered = [...properties];
 
     if (searchTerm) {
@@ -511,6 +524,22 @@ const PublicPropertyListings: React.FC = () => {
                   <span>My Applications</span>
                 </button>
                 
+                <button
+                  onClick={() => {
+                    setShowWalletModal(true);
+                    setShowMobileMenu(false);
+                  }}
+                  className="w-full flex items-center space-x-3 px-4 py-3 text-gray-700 hover:bg-blue-50 hover:text-blue-600 rounded-lg transition-colors font-medium"
+                >
+                  <Wallet className="w-5 h-5" />
+                  <span>My Wallet</span>
+                  {isConnected && (
+                    <span className="ml-auto bg-green-500 text-white text-xs font-bold px-2 py-1 rounded-full">
+                      Connected
+                    </span>
+                  )}
+                </button>
+                
                 <div className="border-t border-gray-200 my-4"></div>
                 
                 <button
@@ -592,6 +621,14 @@ const PublicPropertyListings: React.FC = () => {
                     >
                       <FileText className="w-4 h-4" />
                       <span>My Applications</span>
+                    </button>
+                    <button
+                      onClick={() => setShowWalletModal(true)}
+                      className="flex items-center space-x-2 px-5 py-2.5 text-gray-700 hover:text-gray-900 font-semibold border border-gray-300 rounded-lg hover:border-gray-400 transition-all duration-200"
+                    >
+                      <Wallet className="w-4 h-4" />
+                      <span>Wallet</span>
+                      {isConnected && <span className="text-xs text-green-600">✓</span>}
                     </button>
                     <button
                       onClick={signOut}
@@ -908,6 +945,121 @@ const PublicPropertyListings: React.FC = () => {
             setCompareList(compareList.filter(p => p.id !== propertyId));
           }}
         />
+      )}
+
+      {/* Wallet Management Modal */}
+      {showWalletModal && userProfile && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl shadow-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
+            <div className="p-6 border-b border-gray-200">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="w-12 h-12 bg-gradient-to-br from-blue-500 to-indigo-500 rounded-full flex items-center justify-center">
+                    <Wallet className="w-6 h-6 text-white" />
+                  </div>
+                  <div>
+                    <h2 className="text-2xl font-bold text-gray-900">My Wallet</h2>
+                    <p className="text-sm text-gray-600">Manage your Arc wallet connection</p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => setShowWalletModal(false)}
+                  className="text-gray-400 hover:text-gray-600 p-2 hover:bg-gray-100 rounded-full transition-colors"
+                >
+                  <X className="w-6 h-6" />
+                </button>
+              </div>
+            </div>
+
+            <div className="p-6">
+              {isConnected && walletAddress ? (
+                <div className="space-y-4">
+                  <div className="bg-gradient-to-br from-green-50 to-emerald-50 border-2 border-green-200 rounded-xl p-6">
+                    <div className="flex items-center gap-3 mb-4">
+                      <div className="w-10 h-10 bg-green-500 rounded-full flex items-center justify-center">
+                        <span className="text-white text-xl">✓</span>
+                      </div>
+                      <div>
+                        <p className="text-sm font-medium text-green-900">Wallet Connected</p>
+                        <p className="text-xs text-green-700">Arc Testnet</p>
+                      </div>
+                    </div>
+                    
+                    <div className="bg-white rounded-lg p-4 space-y-2">
+                      <p className="text-xs font-medium text-gray-600">Wallet Address:</p>
+                      <div className="flex items-center justify-between gap-2">
+                        <code className="text-sm font-mono text-gray-900 break-all">
+                          {walletAddress}
+                        </code>
+                        <button
+                          onClick={() => {
+                            navigator.clipboard.writeText(walletAddress);
+                            alert('✅ Wallet address copied to clipboard!');
+                          }}
+                          className="text-blue-600 hover:text-blue-700 p-2 hover:bg-blue-50 rounded transition-colors flex-shrink-0"
+                          title="Copy address"
+                        >
+                          📋
+                        </button>
+                      </div>
+                      {walletId && (
+                        <div className="pt-2 border-t">
+                          <p className="text-xs font-medium text-gray-600">Circle Wallet ID:</p>
+                          <code className="text-xs font-mono text-gray-700">{walletId}</code>
+                        </div>
+                      )}
+                    </div>
+
+                    <div className="mt-4 pt-4 border-t border-green-200">
+                      <p className="text-xs text-green-800 mb-3">
+                        ✅ Your wallet is ready to use for lease signing and payments
+                      </p>
+                      <button
+                        onClick={handleDisconnectWallet}
+                        className="w-full px-4 py-3 bg-red-500 hover:bg-red-600 text-white rounded-lg font-semibold transition-colors flex items-center justify-center gap-2"
+                      >
+                        <LogOut className="w-4 h-4" />
+                        Disconnect Wallet
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  <div className="bg-yellow-50 border-2 border-yellow-200 rounded-xl p-4">
+                    <p className="text-sm text-yellow-800">
+                      ⚠️ <strong>No wallet connected.</strong> You'll need to connect a wallet to sign leases and make payments.
+                    </p>
+                  </div>
+
+                  <WalletConnectionModal
+                    userId={userProfile.id}
+                    userEmail={userProfile.email || ''}
+                    onClose={() => setShowWalletModal(false)}
+                    onWalletConnected={handleWalletConnected}
+                  />
+                </div>
+              )}
+            </div>
+
+            <div className="p-6 bg-gray-50 border-t border-gray-200 rounded-b-2xl">
+              <div className="flex items-start gap-3">
+                <div className="w-8 h-8 bg-blue-100 rounded-full flex items-center justify-center flex-shrink-0">
+                  <span className="text-blue-600 text-sm">ℹ️</span>
+                </div>
+                <div className="text-sm text-gray-600">
+                  <p className="font-medium text-gray-900 mb-1">About Wallet Connection</p>
+                  <p>You can connect either a Circle wallet or an external wallet (MetaMask). Your wallet address will be used for:</p>
+                  <ul className="list-disc list-inside mt-2 space-y-1 text-xs">
+                    <li>Signing lease agreements on the blockchain</li>
+                    <li>Making rent payments in USDC</li>
+                    <li>Receiving security deposit refunds</li>
+                  </ul>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

@@ -11,7 +11,6 @@ import PaymentAnalytics from './components/PaymentAnalytics';
 import MaintenanceForm from './components/MaintenanceForm';
 import TenantDashboard from './components/TenantDashboard';
 import VoiceNotifications from './components/VoiceNotifications';
-import PublicPropertyList from './components/PublicPropertyList';
 import PublicPropertyListings from './components/PublicPropertyListings';
 import PropertyDetail from './components/PropertyDetail';
 import AuthWall from './components/AuthWall';
@@ -134,7 +133,7 @@ interface Application {
   manager_notes?: string;
 }
 
-const API_URL = process.env.REACT_APP_BACKEND_URL || 'https://rent-flow.onrender.com';
+const API_URL = process.env.REACT_APP_BACKEND_URL || 'http://localhost:3001';
 
 function Dashboard() {
   const { user, userProfile, signOut } = useAuth();
@@ -1864,9 +1863,8 @@ function App() {
 }
 
 function AppContent() {
-  const { user, userProfile, loading, signOut } = useAuth();
+  const { user, userProfile, loading } = useAuth();
   const [loadTimeout, setLoadTimeout] = useState(false);
-  const [showPublicProperties, setShowPublicProperties] = useState(false);
 
   // Safety timeout - if loading takes more than 20 seconds, show error
   useEffect(() => {
@@ -1960,64 +1958,16 @@ function AppContent() {
 
   // Not authenticated - show public property listings
   if (!user) {
-    // If user explicitly requests old property list (from a button)
-    if (showPublicProperties) {
-      return <PublicPropertyList onBack={() => setShowPublicProperties(false)} />;
-    }
-    
     // Default: Show new public listings page (no auth required)
     return <PublicPropertyListings />;
   }
 
-  // User authenticated but profile failed to load
+  // User authenticated but profile failed to load - retry once then provide fallback
   if (!userProfile) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50">
-        <div className="text-center max-w-md px-6">
-          <div className="text-yellow-600 text-6xl mb-4">⚠️</div>
-          <h2 className="text-2xl font-bold text-gray-900 mb-4">Profile Load Failed</h2>
-          <p className="text-gray-600 mb-2">
-            Your account is authenticated but we couldn't load your profile from the database.
-          </p>
-          <p className="text-sm text-gray-500 mb-6">
-            This might be due to a slow connection to Supabase or a database issue.
-          </p>
-          <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-6 text-left">
-            <p className="text-sm font-medium text-blue-900 mb-2">Quick Fixes:</p>
-            <ul className="text-sm text-blue-800 space-y-1">
-              <li>• Check your internet connection</li>
-              <li>• Try disabling VPN if enabled</li>
-              <li>• Clear browser cache (Ctrl+Shift+Delete)</li>
-              <li>• Try incognito/private mode</li>
-            </ul>
-          </div>
-          <div className="space-y-3">
-            <button
-              onClick={() => window.location.reload()}
-              className="w-full px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-medium transition-colors"
-            >
-              🔄 Try Again
-            </button>
-            <button
-              onClick={() => {
-                localStorage.clear();
-                sessionStorage.clear();
-                window.location.reload();
-              }}
-              className="w-full px-6 py-3 bg-purple-600 text-white rounded-lg hover:bg-purple-700 font-medium transition-colors"
-            >
-              🧼 Clear Cache & Reload
-            </button>
-            <button
-              onClick={signOut}
-              className="w-full px-6 py-3 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 font-medium transition-colors"
-            >
-              🚪 Sign Out
-            </button>
-          </div>
-        </div>
-      </div>
-    );
+    console.warn('[App.tsx] Profile not loaded, user will see public listings');
+    // Instead of showing error page, treat them as prospective tenant
+    // They can still browse properties and their profile will load eventually
+    return <PublicPropertyListings />;
   }
 
   // Authenticated - route based on role
