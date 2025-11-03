@@ -330,7 +330,36 @@ app.post('/api/arc/sign-lease-contract',
         logger.success('✅ Lease created on-chain!', { leaseId }, 'ARC_CONTRACT');
       }
 
-      // Step 2: Submit USER'S signature to the smart contract (deployer pays gas ONLY)
+      // Step 2: Verify signature before submitting
+      logger.info('Verifying signature...', undefined, 'ARC_CONTRACT');
+      
+      // Recover the address from the signature
+      const messageHashToVerify = await contract.getLeaseMessageHash(
+        leaseId,
+        landlord,
+        tenant || ethers.ZeroAddress,
+        leaseDocumentHash,
+        ethers.parseUnits(monthlyRent.toString(), 6),
+        ethers.parseUnits(securityDeposit.toString(), 6),
+        isLandlord
+      );
+      
+      const recoveredAddress = ethers.verifyMessage(
+        ethers.getBytes(messageHashToVerify),
+        userSignature
+      );
+      
+      logger.info('Signature verification:', {
+        expectedSigner: isLandlord ? landlord : tenant,
+        recoveredAddress,
+        match: recoveredAddress.toLowerCase() === (isLandlord ? landlord : tenant).toLowerCase()
+      }, 'ARC_CONTRACT');
+      
+      if (recoveredAddress.toLowerCase() !== (isLandlord ? landlord : tenant).toLowerCase()) {
+        throw new Error(`Signature verification failed! Expected ${isLandlord ? landlord : tenant}, got ${recoveredAddress}`);
+      }
+      
+      // Step 3: Submit USER'S signature to the smart contract (deployer pays gas ONLY)
       logger.info('Submitting USER signature to contract (deployer pays gas)...', { 
         signer: isLandlord ? landlord : tenant,
         gasPayer: deployerWallet.address
