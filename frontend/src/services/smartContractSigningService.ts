@@ -88,20 +88,24 @@ async function signWithCircleWallet(
     }
 
     console.log('🔵 [Circle Contract] Signing via backend API...');
-
-    // Send lease ID as-is (UUID string)
-    // Backend will handle conversion
+    console.log('   Using ACTUAL user addresses for on-chain signature');
+    console.log('   Landlord:', leaseInfo.landlord);
+    console.log('   Tenant:', leaseInfo.tenant);
     console.log('   Lease ID:', leaseInfo.leaseId);
 
     // Call backend to execute contract transaction
+    // Backend will:
+    // 1. Use deployer wallet to PAY GAS
+    // 2. Sign message with USER's Circle wallet
+    // 3. Submit user's signature to smart contract
     const response = await fetch(`${API_URL}/api/arc/sign-lease-contract`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         walletId: walletInfo.circleWalletId,
-        leaseId: leaseInfo.leaseId, // Send UUID as-is
-        landlord: leaseInfo.landlord,
-        tenant: leaseInfo.tenant,
+        leaseId: leaseInfo.leaseId,
+        landlord: leaseInfo.landlord,  // ACTUAL manager address
+        tenant: leaseInfo.tenant,       // ACTUAL tenant address
         leaseDocumentHash: leaseInfo.leaseDocumentHash,
         monthlyRent: leaseInfo.monthlyRent,
         securityDeposit: leaseInfo.securityDeposit,
@@ -118,7 +122,10 @@ async function signWithCircleWallet(
       };
     }
 
-    console.log('✅ [Circle Contract] Transaction submitted:', result.transactionHash);
+    console.log('✅ [Circle Contract] Transaction confirmed!');
+    console.log('   TX Hash:', result.transactionHash);
+    console.log('   Block:', result.blockNumber);
+    console.log('   Explorer:', result.explorer);
 
     return {
       success: true,
