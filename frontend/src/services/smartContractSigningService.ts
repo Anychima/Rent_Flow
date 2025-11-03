@@ -28,7 +28,6 @@ const LEASE_SIGNATURE_ABI = [
 
 const CONTRACT_ADDRESS = '0x16c91074476E1d8f9984c79ad919C051a1366AA8'; // Updated: Fixed signature verification for independent signing
 const ARC_RPC_URL = 'https://rpc.testnet.arc.network';
-const ARC_CHAIN_ID = 5042002;
 
 interface SigningResult {
   success: boolean;
@@ -128,12 +127,13 @@ async function signWithExternalWallet(
 
     console.log('🦊 [MetaMask] Preparing to sign message (FREE - no gas needed)...');
 
-    // Connect to provider (just for signing, no transactions)
-    const provider = new ethers.BrowserProvider(window.ethereum);
-    const signer = await provider.getSigner();
+    // Connect to Arc Testnet provider directly (no MetaMask network needed for read-only)
+    const arcProvider = new ethers.JsonRpcProvider(ARC_RPC_URL);
+    const metamaskProvider = new ethers.BrowserProvider(window.ethereum);
+    const signer = await metamaskProvider.getSigner();
 
-    // Get contract instance (read-only, no gas)
-    const contract = new ethers.Contract(CONTRACT_ADDRESS, LEASE_SIGNATURE_ABI, provider);
+    // Get contract instance using Arc RPC (read-only, no gas)
+    const contract = new ethers.Contract(CONTRACT_ADDRESS, LEASE_SIGNATURE_ABI, arcProvider);
 
     console.log('📋 [MetaMask] Getting message hash from contract...');
     
