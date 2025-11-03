@@ -1245,11 +1245,17 @@ app.post('/api/leases/:id/sign',
     }
 
     // Check if lease is now fully signed and requires payment
-    const requiresPayment = updateData.lease_status === 'fully_signed' && signer_type === 'tenant';
+    // Payment creation happens when BOTH parties have signed (regardless of who signs last)
+    const bothPartiesSigned = (
+      (currentLease.landlord_signature || updateData.landlord_signature) && 
+      (currentLease.tenant_signature || updateData.tenant_signature)
+    );
+    
+    const requiresPayment = bothPartiesSigned;
     let paymentInfo = null;
 
     if (requiresPayment) {
-      logger.info('Lease fully signed - checking for pending payments', { lease_id: id }, 'LEASE_SIGNING');
+      logger.info('Lease fully signed - ensuring payment records exist', { lease_id: id }, 'LEASE_SIGNING');
       
       // Get or create payment records for this lease
       const { data: existingPayments, error: paymentsError } = await supabase
@@ -1260,7 +1266,7 @@ app.post('/api/leases/:id/sign',
 
       if (!paymentsError && (!existingPayments || existingPayments.length === 0)) {
         // Create initial payment records
-        logger.info('Creating initial payment records', { lease_id: id }, 'LEASE_SIGNING');
+        logger.info('Creating initial payment records for fully signed lease', { lease_id: id }, 'LEASE_SIGNING');
         
         const paymentsToCreate = [
           {
@@ -1270,7 +1276,7 @@ app.post('/api/leases/:id/sign',
             payment_type: 'security_deposit',
             due_date: new Date().toISOString().split('T')[0],
             status: 'pending',
-            notes: 'Initial security deposit payment',
+            notes: 'Initial security deposit payment required for lease activation',
             blockchain_network: 'arc'
           },
           {
@@ -1280,19 +1286,26 @@ app.post('/api/leases/:id/sign',
             payment_type: 'rent',
             due_date: data.start_date,
             status: 'pending',
-            notes: 'First month rent payment',
+            notes: 'First month rent payment required for lease activation',
             blockchain_network: 'arc'
           }
         ];
 
-        await supabase.from('rent_payments').insert(paymentsToCreate);
-        logger.success('Payment records created', { count: 2 }, 'LEASE_SIGNING');
+        const { error: insertError } = await supabase.from('rent_payments').insert(paymentsToCreate);
+        
+        if (insertError) {
+          logger.error('Failed to create payment records', insertError, 'LEASE_SIGNING');
+        } else {
+          logger.success('Payment records created successfully', { count: 2, lease_id: id }, 'LEASE_SIGNING');
+        }
+      } else {
+        logger.info('Payment records already exist', { count: existingPayments?.length || 0 }, 'LEASE_SIGNING');
       }
 
       paymentInfo = {
         securityDeposit: data.security_deposit_usdc,
         firstMonthRent: data.monthly_rent_usdc,
-        landlordWallet: data.property?.wallet_address || '',
+        landlordWallet: data.manager_wallet_address || data.property?.wallet_address || '',
         payments: existingPayments || []
       };
     }
@@ -1301,7 +1314,8 @@ app.post('/api/leases/:id/sign',
       success: true, 
       data,
       requires_payment: requiresPayment,
-      payment_info: paymentInfo
+      payment_info: paymentInfo,
+      both_parties_signed: bothPartiesSigned
     });
   })
 );
