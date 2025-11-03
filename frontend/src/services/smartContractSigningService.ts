@@ -115,7 +115,7 @@ async function signWithCircleWallet(
  * User signs the transaction in their browser wallet
  */
 async function signWithExternalWallet(
-  _address: string, // Not used directly, but keep for interface consistency
+  _address: string,
   leaseInfo: LeaseInfo
 ): Promise<SigningResult> {
   try {
@@ -126,78 +126,39 @@ async function signWithExternalWallet(
       };
     }
 
-    console.log('🦊 [MetaMask] Preparing to sign lease...');
+    console.log('🦊 [MetaMask] Preparing to sign message (FREE - no gas needed)...');
 
-    // Connect to Arc Testnet
+    // Connect to provider (just for signing, no transactions)
     const provider = new ethers.BrowserProvider(window.ethereum);
-    
-    // Ensure we're on Arc Testnet
-    const network = await provider.getNetwork();
-    if (Number(network.chainId) !== ARC_CHAIN_ID) {
-      console.log('⚠️ Wrong network detected, switching to Arc Testnet...');
-      
-      try {
-        await window.ethereum.request({
-          method: 'wallet_switchEthereumChain',
-          params: [{ chainId: `0x${ARC_CHAIN_ID.toString(16)}` }],
-        });
-      } catch (switchError: any) {
-        // Chain not added to MetaMask
-        if (switchError.code === 4902) {
-          await window.ethereum.request({
-            method: 'wallet_addEthereumChain',
-            params: [{
-              chainId: `0x${ARC_CHAIN_ID.toString(16)}`,
-              chainName: 'Arc Testnet',
-              nativeCurrency: {
-                name: 'ETH',
-                symbol: 'ETH',
-                decimals: 18
-              },
-              rpcUrls: [ARC_RPC_URL],
-              blockExplorerUrls: ['https://testnet.arcscan.app']
-            }],
-          });
-        } else {
-          throw switchError;
-        }
-      }
-    }
-
     const signer = await provider.getSigner();
-    const contract = new ethers.Contract(CONTRACT_ADDRESS, LEASE_SIGNATURE_ABI, signer);
 
-    console.log('   Lease ID:', leaseInfo.leaseId);
+    // Create message to sign (no contract interaction needed)
+    const message = `Sign lease agreement
 
-    // Get the message hash from the contract
-    console.log('📋 [MetaMask] Getting message hash from contract...');
-    const messageHash = await contract.getLeaseMessageHash(
-      leaseInfo.leaseId,
-      leaseInfo.landlord,
-      leaseInfo.tenant,
-      leaseInfo.leaseDocumentHash,
-      ethers.parseUnits(leaseInfo.monthlyRent.toString(), 6),
-      ethers.parseUnits(leaseInfo.securityDeposit.toString(), 6),
-      leaseInfo.isLandlord
-    );
+Lease ID: ${leaseInfo.leaseId}
+Landlord: ${leaseInfo.landlord}
+Tenant: ${leaseInfo.tenant}
+Monthly Rent: ${leaseInfo.monthlyRent} USDC
+Security Deposit: ${leaseInfo.securityDeposit} USDC
 
-    console.log('✍️ [MetaMask] Requesting signature from user...');
-    console.log('   Please check MetaMask popup to sign the message');
+This signature is FREE and requires no gas fees.`;
+
+    console.log('✍️ [MetaMask] Requesting signature (no gas required)...');
     
-    // Sign the message hash with user's wallet
-    const userSignature = await signer.signMessage(ethers.getBytes(messageHash));
+    // Simple message signature - NO GAS REQUIRED
+    const userSignature = await signer.signMessage(message);
     
-    console.log('✅ [MetaMask] Signature obtained from user!');
+    console.log('✅ [MetaMask] Signature obtained! (FREE)');
     console.log('   Signature length:', userSignature.length);
 
-    // Send signature to backend for gas-sponsored submission
-    console.log('📤 [Backend] Sending signature to backend (deployer will pay gas)...');
+    // Send signature to backend where deployer pays ALL gas
+    console.log('📤 [Backend] Sending to backend (deployer pays all gas on Arc)...');
     
     const response = await fetch(`${API_URL}/api/arc/sign-lease-contract`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        userSignature,  // USER'S SIGNATURE from MetaMask
+        userSignature,
         leaseId: leaseInfo.leaseId,
         landlord: leaseInfo.landlord,
         tenant: leaseInfo.tenant,
@@ -213,14 +174,13 @@ async function signWithExternalWallet(
     if (!result.success) {
       return {
         success: false,
-        error: result.error || 'Failed to submit signature to blockchain'
+        error: result.error || 'Failed to submit signature'
       };
     }
 
-    console.log('✅ [MetaMask] Lease signed on-chain!');
-    console.log('   Transaction:', result.transactionHash);
-    console.log('   Block:', result.blockNumber);
-    console.log('   User signed, deployer paid gas');
+    console.log('✅ [Success] Lease signed on Arc blockchain!');
+    console.log('   TX Hash:', result.transactionHash);
+    console.log('   User signed (FREE), deployer paid gas');
 
     return {
       success: true,
@@ -239,7 +199,7 @@ async function signWithExternalWallet(
 
     return {
       success: false,
-      error: error.message || 'MetaMask signing failed'
+      error: error.message || 'Signing failed'
     };
   }
 }
