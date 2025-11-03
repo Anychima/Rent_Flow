@@ -215,10 +215,11 @@ app.post('/api/circle/sign-message',
 
 // ==================== Arc Smart Contract Signing ====================
 
-// Sign lease using RentFlowLeaseSignature smart contract (Circle wallet)
+// Sign lease using RentFlowLeaseSignature smart contract
+// User signs with their wallet (MetaMask), deployer pays gas
 app.post('/api/arc/sign-lease-contract',
   validateBody({
-    walletId: { type: 'string', required: true },
+    userSignature: { type: 'string', required: true },
     leaseId: { type: 'string', required: true },
     landlord: { type: 'string', required: true },
     tenant: { type: 'string', required: true },
@@ -229,7 +230,7 @@ app.post('/api/arc/sign-lease-contract',
   }),
   asyncHandler(async (req: Request, res: Response) => {
     const {
-      walletId,
+      userSignature,
       leaseId,
       landlord,
       tenant,
@@ -239,19 +240,19 @@ app.post('/api/arc/sign-lease-contract',
       isLandlord
     } = req.body;
 
-    logger.info('Signing lease on smart contract with Circle wallet', { 
-      walletId, 
+    logger.info('Signing lease on smart contract', { 
       leaseId,
       landlord,
       tenant,
-      isLandlord 
+      isLandlord,
+      signatureLength: userSignature.length
     }, 'ARC_CONTRACT');
 
     try {
       // Import ethers for contract interaction
       const { ethers } = await import('ethers');
 
-      // Contract ABI (signLease, getLeaseMessageHash, AND createLease)
+      // Contract ABI
       const ABI = [
         'function createLease(string memory leaseId, address landlord, address tenant, string memory leaseDocumentHash, uint256 monthlyRent, uint256 securityDeposit, uint64 startDate, uint64 endDate) external returns (string memory)',
         'function signLease(string memory leaseId, bytes memory signature, bool isLandlord) external',
@@ -269,15 +270,15 @@ app.post('/api/arc/sign-lease-contract',
         throw new Error('DEPLOYER_PRIVATE_KEY not configured');
       }
 
-      // Connect to Arc Testnet with DEPLOYER wallet (to pay gas)
+      // Connect to Arc Testnet with DEPLOYER wallet (ONLY TO PAY GAS)
       const provider = new ethers.JsonRpcProvider(RPC_URL);
       const deployerWallet = new ethers.Wallet(DEPLOYER_KEY, provider);
       const contract = new ethers.Contract(CONTRACT_ADDRESS, ABI, deployerWallet);
 
-      logger.info('🔑 Transaction will be sent by deployer (pays gas):', { 
+      logger.info('⛽ Deployer wallet will pay gas fees:', { 
         deployer: deployerWallet.address,
-        actualLandlord: landlord,
-        actualTenant: tenant
+        userLandlord: landlord,
+        userTenant: tenant
       }, 'ARC_CONTRACT');
 
       // Step 1: Check if lease exists on-chain, if not create it
@@ -285,16 +286,16 @@ app.post('/api/arc/sign-lease-contract',
       try {
         const existingLease = await contract.getLease(leaseId);
         if (existingLease.landlord === ethers.ZeroAddress) {
-          // Lease doesn't exist, create it
-          logger.info('🆕 Creating lease on-chain with actual user addresses...', { leaseId, landlord, tenant }, 'ARC_CONTRACT');
+          // Lease doesn't exist, create it (deployer pays gas)
+          logger.info('🆕 Creating lease on-chain with user addresses...', { leaseId, landlord, tenant }, 'ARC_CONTRACT');
           
           const startTimestamp = Math.floor(new Date().getTime() / 1000);
           const endTimestamp = startTimestamp + (365 * 24 * 60 * 60);
           
           const createTx = await contract.createLease(
             leaseId,
-            landlord,  // USE ACTUAL MANAGER'S ADDRESS
-            tenant || ethers.ZeroAddress,  // USE ACTUAL TENANT'S ADDRESS (or zero if not signed yet)
+            landlord,  // ACTUAL USER'S ADDRESS
+            tenant || ethers.ZeroAddress,  // ACTUAL USER'S ADDRESS
             leaseDocumentHash,
             ethers.parseUnits(monthlyRent.toString(), 6),
             ethers.parseUnits(securityDeposit.toString(), 6),
@@ -302,14 +303,13 @@ app.post('/api/arc/sign-lease-contract',
             endTimestamp
           );
           
-          logger.info('⏳ Waiting for lease creation...', { txHash: createTx.hash }, 'ARC_CONTRACT');
+          logger.info('⏳ Waiting for lease creation (deployer paying gas)...', { txHash: createTx.hash }, 'ARC_CONTRACT');
           await createTx.wait();
-          logger.success('✅ Lease created on-chain with user addresses!', { leaseId, landlord, tenant }, 'ARC_CONTRACT');
+          logger.success('✅ Lease created on-chain!', { leaseId, landlord, tenant }, 'ARC_CONTRACT');
         } else {
-          logger.info('✅ Lease already exists on-chain', { leaseId, existingLandlord: existingLease.landlord }, 'ARC_CONTRACT');
+          logger.info('✅ Lease already exists on-chain', { leaseId }, 'ARC_CONTRACT');
         }
       } catch (err) {
-        // If getLease fails, assume lease doesn't exist and create it
         logger.info('🆕 Creating new lease on-chain...', { leaseId }, 'ARC_CONTRACT');
         
         const startTimestamp = Math.floor(new Date().getTime() / 1000);
@@ -317,8 +317,8 @@ app.post('/api/arc/sign-lease-contract',
         
         const createTx = await contract.createLease(
           leaseId,
-          landlord,  // USE ACTUAL MANAGER'S ADDRESS
-          tenant || ethers.ZeroAddress,  // USE ACTUAL TENANT'S ADDRESS
+          landlord,
+          tenant || ethers.ZeroAddress,
           leaseDocumentHash,
           ethers.parseUnits(monthlyRent.toString(), 6),
           ethers.parseUnits(securityDeposit.toString(), 6),
@@ -330,38 +330,15 @@ app.post('/api/arc/sign-lease-contract',
         logger.success('✅ Lease created on-chain!', { leaseId }, 'ARC_CONTRACT');
       }
 
-      // Step 2: Get the message hash from the contract (using ACTUAL user addresses)
-      logger.info('Getting message hash from contract with actual user addresses...', undefined, 'ARC_CONTRACT');
-      const messageHash = await contract.getLeaseMessageHash(
-        leaseId,
-        landlord,  // USE ACTUAL MANAGER'S ADDRESS
-        tenant || ethers.ZeroAddress,  // USE ACTUAL TENANT'S ADDRESS
-        leaseDocumentHash,
-        ethers.parseUnits(monthlyRent.toString(), 6),
-        ethers.parseUnits(securityDeposit.toString(), 6),
-        isLandlord
-      );
-
-      logger.info('Message hash obtained', { messageHash }, 'ARC_CONTRACT');
-
-      // Step 3: Sign the message hash with the USER's Circle wallet via Circle SDK
-      logger.info('🔵 Signing message with user Circle wallet via Circle SDK...', { walletId }, 'ARC_CONTRACT');
-      
-      const signatureResult = await arcWalletService.signMessage(walletId, ethers.hexlify(messageHash));
-      
-      if (!signatureResult.success || !signatureResult.signature) {
-        throw new Error('Failed to sign message with Circle wallet: ' + (signatureResult.error || 'Unknown error'));
-      }
-      
-      const userSignature = signatureResult.signature;
-      logger.success('✅ User signature obtained from Circle wallet', { signatureLength: userSignature.length }, 'ARC_CONTRACT');
-
-      // Step 4: Submit the signature to the smart contract (deployer pays gas)
-      logger.info('Submitting user signature to contract (deployer pays gas)...', undefined, 'ARC_CONTRACT');
+      // Step 2: Submit USER'S signature to the smart contract (deployer pays gas ONLY)
+      logger.info('Submitting USER signature to contract (deployer pays gas)...', { 
+        signer: isLandlord ? landlord : tenant,
+        gasPayer: deployerWallet.address
+      }, 'ARC_CONTRACT');
 
       const tx = await contract.signLease(
         leaseId,
-        userSignature,  // USER'S SIGNATURE from their Circle wallet
+        userSignature,  // USER'S SIGNATURE from MetaMask
         isLandlord
       );
 
@@ -369,10 +346,10 @@ app.post('/api/arc/sign-lease-contract',
 
       const receipt = await tx.wait();
 
-      logger.success('Lease signed on-chain by user!', { 
+      logger.success('Lease signed on-chain by USER!', { 
         txHash: receipt.hash,
         blockNumber: receipt.blockNumber,
-        signer: isLandlord ? landlord : tenant,
+        userSigner: isLandlord ? landlord : tenant,
         gasPayedBy: deployerWallet.address
       }, 'ARC_CONTRACT');
 

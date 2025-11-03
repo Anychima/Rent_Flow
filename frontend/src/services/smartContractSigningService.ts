@@ -80,63 +80,32 @@ async function signWithCircleWallet(
   leaseInfo: LeaseInfo
 ): Promise<SigningResult> {
   try {
-    if (!walletInfo.circleWalletId) {
+    console.log('🔵 [Circle Wallet] Circle wallet detected');
+    console.log('   Switching to MetaMask for signature (Circle SDK limitation)');
+    console.log('   Circle wallet address:', walletInfo.address);
+    
+    // IMPORTANT: Circle SDK doesn't support message signing
+    // Workaround: Use MetaMask to sign even if user has Circle wallet
+    // The transaction will still use their Circle wallet address
+    
+    if (typeof window === 'undefined' || !window.ethereum) {
       return {
         success: false,
-        error: 'Circle wallet ID is required'
+        error: 'MetaMask is required for signing. Please install MetaMask browser extension.'
       };
     }
 
-    console.log('🔵 [Circle Contract] Signing via backend API...');
-    console.log('   Using ACTUAL user addresses for on-chain signature');
-    console.log('   Landlord:', leaseInfo.landlord);
-    console.log('   Tenant:', leaseInfo.tenant);
-    console.log('   Lease ID:', leaseInfo.leaseId);
-
-    // Call backend to execute contract transaction
-    // Backend will:
-    // 1. Use deployer wallet to PAY GAS
-    // 2. Sign message with USER's Circle wallet
-    // 3. Submit user's signature to smart contract
-    const response = await fetch(`${API_URL}/api/arc/sign-lease-contract`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        walletId: walletInfo.circleWalletId,
-        leaseId: leaseInfo.leaseId,
-        landlord: leaseInfo.landlord,  // ACTUAL manager address
-        tenant: leaseInfo.tenant,       // ACTUAL tenant address
-        leaseDocumentHash: leaseInfo.leaseDocumentHash,
-        monthlyRent: leaseInfo.monthlyRent,
-        securityDeposit: leaseInfo.securityDeposit,
-        isLandlord: leaseInfo.isLandlord
-      })
-    });
-
-    const result = await response.json();
-
-    if (!result.success) {
-      return {
-        success: false,
-        error: result.error || 'Circle contract signing failed'
-      };
-    }
-
-    console.log('✅ [Circle Contract] Transaction confirmed!');
-    console.log('   TX Hash:', result.transactionHash);
-    console.log('   Block:', result.blockNumber);
-    console.log('   Explorer:', result.explorer);
-
-    return {
-      success: true,
-      transactionHash: result.transactionHash,
-      method: 'circle'
-    };
+    console.log('🦊 [MetaMask] Requesting signature from user...');
+    console.log('   This signature will be linked to your Circle wallet address');
+    
+    // Use MetaMask to sign the lease
+    return signWithExternalWallet(walletInfo.address, leaseInfo);
+    
   } catch (error) {
     console.error('❌ [Circle Contract] Error:', error);
     return {
       success: false,
-      error: error instanceof Error ? error.message : 'Circle contract signing failed'
+      error: error instanceof Error ? error.message : 'Failed to sign with wallet'
     };
   }
 }
@@ -157,7 +126,7 @@ async function signWithExternalWallet(
       };
     }
 
-    console.log('🦊 [MetaMask Contract] Preparing contract transaction...');
+    console.log('🦊 [MetaMask] Preparing to sign lease...');
 
     // Connect to Arc Testnet
     const provider = new ethers.BrowserProvider(window.ethereum);
@@ -198,60 +167,79 @@ async function signWithExternalWallet(
     const signer = await provider.getSigner();
     const contract = new ethers.Contract(CONTRACT_ADDRESS, LEASE_SIGNATURE_ABI, signer);
 
-    // Send lease ID as-is (UUID string) - backend/contract will handle it
     console.log('   Lease ID:', leaseInfo.leaseId);
 
-    // First, get the message hash from the contract
-    console.log('📋 [MetaMask Contract] Getting message hash...');
+    // Get the message hash from the contract
+    console.log('📋 [MetaMask] Getting message hash from contract...');
     const messageHash = await contract.getLeaseMessageHash(
-      leaseInfo.leaseId, // Send UUID as-is
+      leaseInfo.leaseId,
       leaseInfo.landlord,
       leaseInfo.tenant,
       leaseInfo.leaseDocumentHash,
-      ethers.parseUnits(leaseInfo.monthlyRent.toString(), 6), // USDC has 6 decimals
+      ethers.parseUnits(leaseInfo.monthlyRent.toString(), 6),
       ethers.parseUnits(leaseInfo.securityDeposit.toString(), 6),
       leaseInfo.isLandlord
     );
 
-    console.log('✍️ [MetaMask Contract] Requesting user signature...');
+    console.log('✍️ [MetaMask] Requesting signature from user...');
+    console.log('   Please check MetaMask popup to sign the message');
     
     // Sign the message hash with user's wallet
-    const signature = await signer.signMessage(ethers.getBytes(messageHash));
+    const userSignature = await signer.signMessage(ethers.getBytes(messageHash));
+    
+    console.log('✅ [MetaMask] Signature obtained from user!');
+    console.log('   Signature length:', userSignature.length);
 
-    console.log('📤 [MetaMask Contract] Submitting to contract...');
+    // Send signature to backend for gas-sponsored submission
+    console.log('📤 [Backend] Sending signature to backend (deployer will pay gas)...');
+    
+    const response = await fetch(`${API_URL}/api/arc/sign-lease-contract`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        userSignature,  // USER'S SIGNATURE from MetaMask
+        leaseId: leaseInfo.leaseId,
+        landlord: leaseInfo.landlord,
+        tenant: leaseInfo.tenant,
+        leaseDocumentHash: leaseInfo.leaseDocumentHash,
+        monthlyRent: leaseInfo.monthlyRent,
+        securityDeposit: leaseInfo.securityDeposit,
+        isLandlord: leaseInfo.isLandlord
+      })
+    });
 
-    // Call the smart contract signLease function
-    const tx = await contract.signLease(
-      leaseInfo.leaseId, // Send UUID as-is
-      signature,
-      leaseInfo.isLandlord
-    );
+    const result = await response.json();
 
-    console.log('⏳ [MetaMask Contract] Waiting for confirmation...');
-    const receipt = await tx.wait();
+    if (!result.success) {
+      return {
+        success: false,
+        error: result.error || 'Failed to submit signature to blockchain'
+      };
+    }
 
-    console.log('✅ [MetaMask Contract] Lease signed on-chain!');
-    console.log('   Transaction:', receipt.hash);
-    console.log('   Block:', receipt.blockNumber);
+    console.log('✅ [MetaMask] Lease signed on-chain!');
+    console.log('   Transaction:', result.transactionHash);
+    console.log('   Block:', result.blockNumber);
+    console.log('   User signed, deployer paid gas');
 
     return {
       success: true,
-      transactionHash: receipt.hash,
+      transactionHash: result.transactionHash,
       method: 'metamask'
     };
   } catch (error: any) {
-    console.error('❌ [MetaMask Contract] Error:', error);
+    console.error('❌ [MetaMask] Error:', error);
     
     if (error.code === 4001) {
       return {
         success: false,
-        error: 'User rejected the transaction'
+        error: 'User rejected the signature request'
       };
     }
 
     return {
       success: false,
-      error: error.message || 'MetaMask contract signing failed'
+      error: error.message || 'MetaMask signing failed'
     };
   }
 }

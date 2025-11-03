@@ -316,6 +316,61 @@ class ArcWalletService {
   }
 
   /**
+   * Execute smart contract function with Circle wallet
+   * This uses Circle's contract execution API to interact with smart contracts
+   */
+  async executeContract(
+    walletId: string,
+    contractAddress: string,
+    abiFunction: string,
+    args: any[]
+  ): Promise<{
+    success: boolean;
+    transactionHash?: string;
+    error?: string;
+  }> {
+    if (!this.isConfigured) {
+      return {
+        success: false,
+        error: 'Arc Wallet Service not configured'
+      };
+    }
+
+    try {
+      console.log(`📝 [ArcWallet] Executing contract function with wallet ${walletId}...`);
+      console.log('   Contract:', contractAddress);
+      console.log('   Function:', abiFunction);
+      
+      const response = await this.client.createContractExecutionTransaction({
+        walletId,
+        contractAddress,
+        abiFunctionSignature: abiFunction,
+        abiParameters: args,
+        fee: {
+          type: 'level',
+          config: {
+            feeLevel: 'MEDIUM'
+          }
+        }
+      });
+
+      const txHash = response?.data?.transactionHash || response?.data?.txHash;
+      
+      console.log('✅ [ArcWallet] Contract execution initiated:', txHash);
+      return {
+        success: true,
+        transactionHash: txHash
+      };
+    } catch (error: any) {
+      console.error('❌ [ArcWallet] Error executing contract:', error?.response?.data || error.message || error);
+      return {
+        success: false,
+        error: error?.response?.data?.message || error.message || 'Failed to execute contract'
+      };
+    }
+  }
+
+  /**
    * Sign message with Circle wallet
    * Uses Circle SDK to sign a message with wallet's private key
    * This is for Circle-managed wallets only
