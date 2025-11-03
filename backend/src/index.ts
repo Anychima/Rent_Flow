@@ -4453,15 +4453,22 @@ app.delete('/api/users/:userId/wallets/:walletId', async (req: Request, res: Res
 
     console.log('🗑️ [Wallets] Removing wallet:', { userId, walletId });
 
-    // Check if it's the primary wallet and there are other wallets
+    // Get the wallet being deleted
     const { data: wallet } = await supabase
       .from('user_wallets')
-      .select('is_primary')
+      .select('wallet_address, is_primary')
       .eq('id', walletId)
       .eq('user_id', userId)
       .single();
 
-    if (wallet?.is_primary) {
+    if (!wallet) {
+      return res.status(404).json({
+        success: false,
+        error: 'Wallet not found'
+      });
+    }
+
+    if (wallet.is_primary) {
       const { data: otherWallets } = await supabase
         .from('user_wallets')
         .select('id')
@@ -4476,7 +4483,7 @@ app.delete('/api/users/:userId/wallets/:walletId', async (req: Request, res: Res
       }
     }
 
-    // Delete the wallet
+    // Delete the wallet from user_wallets table
     const { error } = await supabase
       .from('user_wallets')
       .delete()
@@ -4485,7 +4492,26 @@ app.delete('/api/users/:userId/wallets/:walletId', async (req: Request, res: Res
 
     if (error) throw error;
 
-    console.log('✅ [Wallets] Wallet removed');
+    // IMPORTANT: Also clear from user profile if it matches
+    const { data: userData } = await supabase
+      .from('users')
+      .select('wallet_address')
+      .eq('id', userId)
+      .single();
+
+    if (userData?.wallet_address === wallet.wallet_address) {
+      console.log('🗑️ [Wallets] Clearing wallet from user profile');
+      await supabase
+        .from('users')
+        .update({
+          wallet_address: null,
+          circle_wallet_id: null,
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', userId);
+    }
+
+    console.log('✅ [Wallets] Wallet removed completely');
 
     res.json({
       success: true,
