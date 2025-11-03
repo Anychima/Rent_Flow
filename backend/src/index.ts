@@ -4522,6 +4522,30 @@ app.delete('/api/users/:userId/wallets/:walletId', async (req: Request, res: Res
           updated_at: new Date().toISOString()
         })
         .eq('id', userId);
+      
+      // Also clear from all unsigned leases where user is the property owner
+      const { data: userProperties } = await supabase
+        .from('properties')
+        .select('id')
+        .eq('owner_id', userId);
+      
+      if (userProperties && userProperties.length > 0) {
+        const propertyIds = userProperties.map(p => p.id);
+        
+        const { data: clearedLeases } = await supabase
+          .from('leases')
+          .update({
+            manager_wallet_address: null,
+            landlord_wallet: null
+          })
+          .in('property_id', propertyIds)
+          .is('landlord_signature', null)  // Only unsigned leases
+          .select();
+        
+        if (clearedLeases && clearedLeases.length > 0) {
+          console.log(`🗑️ [Wallets] Cleared wallet from ${clearedLeases.length} unsigned leases`);
+        }
+      }
     }
 
     console.log('✅ [Wallets] Wallet removed completely');
@@ -4598,6 +4622,44 @@ app.post('/api/users/:userId/wallets', async (req: Request, res: Response) => {
 
     console.log('✅ [Wallets] Wallet saved successfully');
 
+    // IMPORTANT: Update user profile with primary wallet
+    if (isFirstWallet) {
+      await supabase
+        .from('users')
+        .update({
+          wallet_address: walletAddress,
+          circle_wallet_id: circleWalletId || null,
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', userId);
+      
+      console.log('🔄 [Wallets] Updated user profile with primary wallet');
+      
+      // Update all unsigned leases where user is the property owner
+      const { data: userProperties } = await supabase
+        .from('properties')
+        .select('id')
+        .eq('owner_id', userId);
+      
+      if (userProperties && userProperties.length > 0) {
+        const propertyIds = userProperties.map(p => p.id);
+        
+        const { data: updatedLeases } = await supabase
+          .from('leases')
+          .update({
+            manager_wallet_address: walletAddress,
+            landlord_wallet: walletAddress
+          })
+          .in('property_id', propertyIds)
+          .is('landlord_signature', null)  // Only unsigned leases
+          .select();
+        
+        if (updatedLeases && updatedLeases.length > 0) {
+          console.log(`🔄 [Wallets] Updated ${updatedLeases.length} unsigned leases with new wallet`);
+        }
+      }
+    }
+
     res.json({
       success: true,
       message: 'Wallet added successfully',
@@ -4656,6 +4718,30 @@ app.post('/api/users/:userId/wallet', async (req: Request, res: Response) => {
     }
 
     console.log('✅ [Wallet] External wallet saved successfully');
+
+    // Update all unsigned leases where user is the property owner
+    const { data: userProperties } = await supabase
+      .from('properties')
+      .select('id')
+      .eq('owner_id', userId);
+    
+    if (userProperties && userProperties.length > 0) {
+      const propertyIds = userProperties.map(p => p.id);
+      
+      const { data: updatedLeases } = await supabase
+        .from('leases')
+        .update({
+          manager_wallet_address: walletAddress,
+          landlord_wallet: walletAddress
+        })
+        .in('property_id', propertyIds)
+        .is('landlord_signature', null)  // Only unsigned leases
+        .select();
+      
+      if (updatedLeases && updatedLeases.length > 0) {
+        console.log(`🔄 [Wallet] Updated ${updatedLeases.length} unsigned leases with new wallet`);
+      }
+    }
 
     res.json({
       success: true,
