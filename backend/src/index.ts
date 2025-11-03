@@ -4190,6 +4190,17 @@ app.post('/api/leases/generate', async (req: Request, res: Response) => {
       specialTerms.parking = 'One parking spot included with rental';
     }
 
+    // Get property owner's wallet address for manager_wallet_address
+    const { data: propertyOwner } = await supabase
+      .from('users')
+      .select('wallet_address')
+      .eq('id', property.owner_id)
+      .single();
+
+    const managerWalletAddress = propertyOwner?.wallet_address || null;
+    
+    console.log('💼 Manager wallet address for lease:', managerWalletAddress);
+
     // Create lease record
     const { data: lease, error: leaseError } = await supabase
       .from('leases')
@@ -4206,7 +4217,9 @@ app.post('/api/leases/generate', async (req: Request, res: Response) => {
         status: 'pending',
         lease_terms: leaseTerms,
         special_terms: specialTerms,
-        generated_at: new Date().toISOString()
+        generated_at: new Date().toISOString(),
+        manager_wallet_address: managerWalletAddress,  // Save manager's wallet
+        landlord_wallet: managerWalletAddress  // Alias for compatibility
       }])
       .select()
       .single();
