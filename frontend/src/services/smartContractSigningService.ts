@@ -60,8 +60,27 @@ export async function signLeaseOnChain(
   
   console.log('📝 [Smart Contract Signing] Initiating on-chain signature...');
   console.log('   Wallet Type:', walletInfo.walletType);
-  console.log('   Address:', walletInfo.address);
+  console.log('   Address (raw):', walletInfo.address);
   console.log('   Lease ID:', leaseInfo.leaseId);
+  
+  // CRITICAL: Validate and normalize addresses
+  try {
+    // Normalize addresses to proper checksummed format
+    leaseInfo.landlord = ethers.getAddress(leaseInfo.landlord.slice(0, 42));
+    if (leaseInfo.tenant && leaseInfo.tenant !== ethers.ZeroAddress) {
+      leaseInfo.tenant = ethers.getAddress(leaseInfo.tenant.slice(0, 42));
+    }
+    
+    console.log('✅ Addresses validated:');
+    console.log('   Landlord:', leaseInfo.landlord);
+    console.log('   Tenant:', leaseInfo.tenant);
+  } catch (error) {
+    console.error('❌ Invalid address format:', error);
+    return {
+      success: false,
+      error: 'Invalid wallet address format. Please reconnect your wallet.'
+    };
+  }
   
   if (walletInfo.walletType === 'circle') {
     return signWithCircleWallet(walletInfo, leaseInfo);
