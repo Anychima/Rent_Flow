@@ -80,7 +80,15 @@ export default function WalletManagement({ userId, userEmail }: WalletManagement
       if (response.data.success) {
         setSuccess('Wallet removed!');
         setTimeout(() => setSuccess(''), 3000);
+        
+        // Clear from localStorage
+        localStorage.removeItem('rentflow_wallet');
+        
+        // Refresh wallet list
         await fetchWallets();
+        
+        // Force page reload to ensure all components sync
+        window.location.reload();
       }
     } catch (err: any) {
       setError(err.response?.data?.error || 'Failed to remove wallet');
