@@ -629,19 +629,38 @@ function Dashboard() {
       console.log('🏛️ [Dashboard] Fetching properties from:', propertiesUrl);
       console.log('📊 [Dashboard] Fetching stats from:', statsUrl);
       
-      // Fetch all data with individual error handling
+      // Helper function to fetch with timeout
+      const fetchWithTimeout = async (url: string, timeout = 15000) => {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), timeout);
+        
+        try {
+          const response = await fetch(url, { signal: controller.signal });
+          clearTimeout(timeoutId);
+          return response;
+        } catch (error: any) {
+          clearTimeout(timeoutId);
+          if (error.name === 'AbortError') {
+            console.warn(`⏱️ [Dashboard] Request timeout for: ${url}`);
+            return null;
+          }
+          throw error;
+        }
+      };
+      
+      // Fetch all data with individual error handling and timeouts
       console.log('🔄 [Dashboard] Fetching stats...');
-      const statsRes = await fetch(statsUrl).catch(() => null);
+      const statsRes = await fetchWithTimeout(statsUrl).catch(() => null);
       console.log('🔄 [Dashboard] Fetching properties...');
-      const propsRes = await fetch(propertiesUrl).catch(() => null);
+      const propsRes = await fetchWithTimeout(propertiesUrl).catch(() => null);
       console.log('🔄 [Dashboard] Fetching leases...');
-      const leasesRes = await fetch(leasesUrl).catch(() => null);
+      const leasesRes = await fetchWithTimeout(leasesUrl).catch(() => null);
       console.log('🔄 [Dashboard] Fetching maintenance...');
-      const maintenanceRes = await fetch(maintenanceUrl).catch(() => null);
+      const maintenanceRes = await fetchWithTimeout(maintenanceUrl).catch(() => null);
       console.log('🔄 [Dashboard] Fetching payments...');
-      const paymentsRes = await fetch(paymentsUrl).catch(() => null);
+      const paymentsRes = await fetchWithTimeout(paymentsUrl).catch(() => null);
       console.log('🔄 [Dashboard] Fetching applications...');
-      const applicationsRes = await fetch(applicationsUrl).catch(() => null);
+      const applicationsRes = await fetchWithTimeout(applicationsUrl).catch(() => null);
 
       // Parse responses with fallbacks
       console.log('📦 [Dashboard] Parsing responses...');
@@ -673,11 +692,18 @@ function Dashboard() {
         setProperties(propsData.data || []);
       } else {
         console.error('❌ [Dashboard] Properties failed');
+        setProperties([]); // Set empty array instead of leaving old data
       }
       
       if (leasesData.success) setLeases(leasesData.data || []);
+      else setLeases([]);
+      
       if (maintenanceData.success) setMaintenance(maintenanceData.data || []);
+      else setMaintenance([]);
+      
       if (paymentsData.success) setPayments(paymentsData.data || []);
+      else setPayments([]);
+      
       if (applicationsData.success) {
         const apps = applicationsData.data || [];
         setApplications(apps);
@@ -691,6 +717,12 @@ function Dashboard() {
       console.log('✅ [Dashboard] Data fetch complete!');
     } catch (error) {
       console.error('❌ [Dashboard] Error fetching data:', error);
+      // Set all to empty arrays on error to prevent infinite loading
+      setProperties([]);
+      setLeases([]);
+      setMaintenance([]);
+      setPayments([]);
+      setApplications([]);
     } finally {
       setLoading(false);
       console.log('🏁 [Dashboard] Loading state set to false');
