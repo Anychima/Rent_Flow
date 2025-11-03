@@ -132,21 +132,28 @@ async function signWithExternalWallet(
     const provider = new ethers.BrowserProvider(window.ethereum);
     const signer = await provider.getSigner();
 
-    // Create message to sign (no contract interaction needed)
-    const message = `Sign lease agreement
+    // Get contract instance (read-only, no gas)
+    const contract = new ethers.Contract(CONTRACT_ADDRESS, LEASE_SIGNATURE_ABI, provider);
 
-Lease ID: ${leaseInfo.leaseId}
-Landlord: ${leaseInfo.landlord}
-Tenant: ${leaseInfo.tenant}
-Monthly Rent: ${leaseInfo.monthlyRent} USDC
-Security Deposit: ${leaseInfo.securityDeposit} USDC
-
-This signature is FREE and requires no gas fees.`;
-
-    console.log('✍️ [MetaMask] Requesting signature (no gas required)...');
+    console.log('📋 [MetaMask] Getting message hash from contract...');
     
-    // Simple message signature - NO GAS REQUIRED
-    const userSignature = await signer.signMessage(message);
+    // Get the EXACT message hash that the contract expects
+    const messageHash = await contract.getLeaseMessageHash(
+      leaseInfo.leaseId,
+      leaseInfo.landlord,
+      leaseInfo.tenant,
+      leaseInfo.leaseDocumentHash,
+      ethers.parseUnits(leaseInfo.monthlyRent.toString(), 6),
+      ethers.parseUnits(leaseInfo.securityDeposit.toString(), 6),
+      leaseInfo.isLandlord
+    );
+
+    console.log('✍️ [MetaMask] Requesting signature (FREE - no gas)...');
+    console.log('   You are signing lease agreement data');
+    console.log('   This is FREE and requires no gas fees');
+    
+    // Sign the message hash (FREE - no gas required)
+    const userSignature = await signer.signMessage(ethers.getBytes(messageHash));
     
     console.log('✅ [MetaMask] Signature obtained! (FREE)');
     console.log('   Signature length:', userSignature.length);
