@@ -219,56 +219,26 @@ const LeaseSigningPage: React.FC = () => {
       setSigning(true);
       setError('');
 
-      console.log('📝 [Smart Contract Signing] Initiating on-chain signature...');
+      console.log('📝 [Lease Signing] Signing lease (database only for hackathon)...');
       console.log('   Wallet Type:', arcWalletType);
       console.log('   Address:', arcWalletAddress);
       console.log('   Lease ID:', lease.id);
 
-      // Import the smart contract signing service
-      const smartContractSigningService = await import('../services/smartContractSigningService');
+      // TEMPORARY: Skip blockchain signing for hackathon
+      // Sign directly in database with mock transaction hash
+      const mockTxHash = `0x${Date.now().toString(16)}${Math.random().toString(16).slice(2, 18)}`;
       
-      // Prepare lease info for smart contract
-      const leaseInfo = {
-        leaseId: lease.id,
-        landlord: lease.property?.manager_wallet || userProfile?.wallet_address || '0x0000000000000000000000000000000000000000',
-        tenant: arcWalletAddress, // Current user is the tenant
-        leaseDocumentHash: `lease-${lease.id}`, // Use lease ID as document hash
-        monthlyRent: lease.monthly_rent_usdc,
-        securityDeposit: lease.security_deposit_usdc,
-        isLandlord: false
-      };
+      console.log('💾 [Database] Saving signature to database...');
 
-      // Sign lease on smart contract (works for both Circle and external wallets)
-      const result = await smartContractSigningService.signLeaseOnChain(
-        {
-          address: arcWalletAddress,
-          walletType: arcWalletType,
-          circleWalletId: arcWalletId || undefined
-        },
-        leaseInfo
-      );
-
-      if (!result.success) {
-        const errorMessage = typeof result.error === 'string' 
-          ? result.error 
-          : (result.error as any)?.message || 'Failed to sign lease on-chain';
-        setError(errorMessage);
-        setSigning(false);
-        return;
-      }
-
-      console.log('✅ [Smart Contract] Transaction confirmed:', result.transactionHash);
-      console.log('   Explorer:', `https://testnet.arcscan.app/tx/${result.transactionHash}`);
-
-      // Update lease in database with transaction hash
+      // Update lease in database
       const response = await axios.post(`https://rent-flow.onrender.com/api/leases/${lease.id}/sign`, {
         signer_id: userProfile!.id,
-        signature: result.transactionHash, // Store tx hash instead of signature
+        signature: mockTxHash, // Mock signature for hackathon
         signer_type: 'tenant',
         wallet_address: arcWalletAddress,
         wallet_type: arcWalletType,
         wallet_id: arcWalletId || null,
-        blockchain_tx_hash: result.transactionHash
+        blockchain_tx_hash: mockTxHash // Mock tx hash
       });
 
       if (response.data.success) {
@@ -277,9 +247,9 @@ const LeaseSigningPage: React.FC = () => {
         
         setSuccess(
           wasActivated
-            ? `✅ Lease signed on-chain! You are now a tenant. Redirecting...`
+            ? `✅ Lease signed successfully! You are now a tenant. Redirecting...`
             : requiresPayment
-            ? `✅ Lease signed successfully! Transaction: ${result.transactionHash?.substring(0, 10)}... Please complete payments below.`
+            ? `✅ Lease signed successfully! Please complete payments below.`
             : `✅ Lease signed successfully! Waiting for manager signature.`
         );
         setLease(response.data.data);
@@ -288,6 +258,7 @@ const LeaseSigningPage: React.FC = () => {
         if (requiresPayment && response.data.payment_info) {
           setShowPayments(true);
           setPaymentInfo(response.data.payment_info);
+          console.log('💳 [Payment] Showing payment section...');
           // Don't redirect - user needs to make payments
           return;
         }
@@ -312,7 +283,7 @@ const LeaseSigningPage: React.FC = () => {
         }
       }
     } catch (err: any) {
-      console.error('❌ [Arc Sign] Error:', err);
+      console.error('❌ [Lease Sign] Error:', err);
       setError(err.response?.data?.error || err.message || 'Failed to sign lease. Please try again.');
     } finally {
       setSigning(false);
