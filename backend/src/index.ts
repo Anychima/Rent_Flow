@@ -5744,18 +5744,25 @@ app.post('/api/leases/:id/sign', async (req: Request, res: Response) => {
       }
     } else {
       // Landlord signing
+      
+      // CRITICAL: Manager MUST provide wallet address for payment routing
+      if (!wallet_address) {
+        return res.status(400).json({
+          success: false,
+          error: 'Manager wallet address is required for signing. Please connect your wallet first to receive payments.'
+        });
+      }
+      
       updates.landlord_signature = signature;
       updates.landlord_signed_at = new Date().toISOString();
       
       // Store manager wallet info for receiving payments
-      if (wallet_address) {
-        updates.manager_wallet_address = wallet_address;
-        updates.manager_wallet_type = wallet_type || 'phantom';
-        if (wallet_id) {
-          updates.manager_wallet_id = wallet_id;
-        }
-        console.log('💰 [Wallet] Manager wallet stored:', { wallet_address, wallet_type });
+      updates.manager_wallet_address = wallet_address;
+      updates.manager_wallet_type = wallet_type || 'phantom';
+      if (wallet_id) {
+        updates.manager_wallet_id = wallet_id;
       }
+      console.log('💰 [Wallet] Manager wallet stored:', { wallet_address, wallet_type });
       
       // If tenant already signed, lease is fully signed
       if (lease.tenant_signature) {
