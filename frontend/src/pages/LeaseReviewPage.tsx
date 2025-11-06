@@ -113,15 +113,14 @@ const LeaseReviewPage: React.FC = () => {
   const signLeaseAsManager = async () => {
     if (!lease) return;
 
-    // Check if Arc wallet is connected - if not, just show wallet modal
-    if (!isConnected) {
-      setShowWalletModal(true);
-      return;
-    }
+    // Use wallet from user profile (already set globally)
+    const managerWalletAddress = walletAddress || userProfile?.wallet_address;
+    const managerWalletId = walletId || userProfile?.circle_wallet_id;
+    const managerWalletType = walletType || (userProfile?.circle_wallet_id ? 'circle' : 'external');
     
-    // Validate we have a wallet address
-    if (!walletAddress) {
-      setError('Wallet address is required for signing. Please reconnect your wallet.');
+    // Validate we have a wallet address from profile
+    if (!managerWalletAddress) {
+      setError('No wallet address found in your profile. Please set up your wallet in account settings first.');
       return;
     }
 
@@ -130,9 +129,10 @@ const LeaseReviewPage: React.FC = () => {
       setError('');
 
       console.log('📝 [Smart Contract Signing] Initiating on-chain signature...');
-      console.log('   Wallet Type:', walletType);
-      console.log('   Address:', walletAddress);
+      console.log('   Wallet Type:', managerWalletType);
+      console.log('   Address:', managerWalletAddress);
       console.log('   Lease ID:', lease.id);
+      console.log('   Source: User Profile');
 
       // Import the smart contract signing service
       const smartContractSigningService = await import('../services/smartContractSigningService');
@@ -140,7 +140,7 @@ const LeaseReviewPage: React.FC = () => {
       // Prepare lease info for smart contract
       const leaseInfo = {
         leaseId: lease.id,
-        landlord: walletAddress, // Manager is the landlord
+        landlord: managerWalletAddress, // Manager is the landlord
         tenant: lease.tenant?.wallet_address || '0x0000000000000000000000000000000000000000',
         leaseDocumentHash: `lease-${lease.id}`, // Use lease ID as document hash
         monthlyRent: lease.monthly_rent_usdc,
@@ -151,9 +151,9 @@ const LeaseReviewPage: React.FC = () => {
       // Sign lease on smart contract (works for both Circle and external wallets)
       const result = await smartContractSigningService.signLeaseOnChain(
         {
-          address: walletAddress,
-          walletType: walletType,
-          circleWalletId: walletId || undefined
+          address: managerWalletAddress,
+          walletType: managerWalletType,
+          circleWalletId: managerWalletId || undefined
         },
         leaseInfo
       );
@@ -175,9 +175,9 @@ const LeaseReviewPage: React.FC = () => {
         signer_id: userProfile!.id,
         signature: result.transactionHash, // Store tx hash instead of signature
         signer_type: 'landlord',
-        wallet_address: walletAddress,
-        wallet_type: walletType,
-        wallet_id: walletId || null,
+        wallet_address: managerWalletAddress,
+        wallet_type: managerWalletType,
+        wallet_id: managerWalletId || null,
         blockchain_tx_hash: result.transactionHash
       });
 
@@ -481,23 +481,9 @@ const LeaseReviewPage: React.FC = () => {
               )}
               {!lease.landlord_signature && !editing && (
                 <>
-                  {/* Wallet Connection Section */}
+                  {/* Wallet Info - From User Profile */}
                   <div className="bg-white rounded-lg p-6 shadow-sm border-2 border-gray-200">
-                    {!isConnected && (
-                      <div className="space-y-3">
-                        <p className="text-sm text-gray-600 mb-3">Connect your wallet to sign this lease:</p>
-                        <button
-                          onClick={connectArcWallet}
-                          className="w-full flex items-center justify-center gap-3 px-6 py-4 bg-blue-600 text-white rounded-xl hover:bg-blue-700 transition-all shadow-md hover:shadow-lg"
-                        >
-                          <Wallet className="w-5 h-5" />
-                          <span className="font-medium">Connect Arc Wallet</span>
-                        </button>
-                      </div>
-                    )}
-
-                    {/* Arc Wallet Connected */}
-                    {isConnected && (
+                    {(walletAddress || userProfile?.wallet_address) ? (
                       <div className="space-y-3">
                         <div className="bg-gradient-to-br from-blue-50 to-indigo-50 border-2 border-blue-300 rounded-xl p-5">
                           <div className="flex items-center gap-3">
@@ -505,9 +491,12 @@ const LeaseReviewPage: React.FC = () => {
                               <Wallet className="w-6 h-6 text-blue-600" />
                             </div>
                             <div className="flex-1">
-                              <p className="text-sm font-semibold text-blue-900">Arc Wallet Connected</p>
-                              <p className="text-sm font-mono text-blue-900">{walletAddress.substring(0, 8)}...{walletAddress.substring(walletAddress.length - 6)}</p>
-                              <p className="text-xs text-green-600 mt-1 font-medium">✅ Ready to sign</p>
+                              <p className="text-sm font-semibold text-blue-900">Your Wallet (From Profile)</p>
+                              <p className="text-sm font-mono text-blue-900">
+                                {(walletAddress || userProfile?.wallet_address || '').substring(0, 8)}...
+                                {(walletAddress || userProfile?.wallet_address || '').substring((walletAddress || userProfile?.wallet_address || '').length - 6)}
+                              </p>
+                              <p className="text-xs text-green-600 mt-1 font-medium">✅ Ready to sign & receive payments</p>
                             </div>
                             <CheckCircle className="w-6 h-6 text-green-600" />
                           </div>
@@ -530,6 +519,22 @@ const LeaseReviewPage: React.FC = () => {
                               Sign Lease
                             </>
                           )}
+                        </button>
+                      </div>
+                    ) : (
+                      <div className="space-y-3">
+                        <div className="bg-yellow-50 border-2 border-yellow-200 rounded-lg p-4">
+                          <p className="text-sm text-yellow-800 font-medium mb-2">⚠️ No Wallet Found</p>
+                          <p className="text-xs text-yellow-700">
+                            You need to set up your wallet first to sign leases and receive payments.
+                          </p>
+                        </div>
+                        <button
+                          onClick={connectArcWallet}
+                          className="w-full flex items-center justify-center gap-3 px-6 py-4 bg-blue-600 text-white rounded-xl hover:bg-blue-700 transition-all shadow-md hover:shadow-lg"
+                        >
+                          <Wallet className="w-5 h-5" />
+                          <span className="font-medium">Set Up Wallet</span>
                         </button>
                       </div>
                     )}
