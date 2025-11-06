@@ -113,9 +113,9 @@ const LeaseReviewPage: React.FC = () => {
   const signLeaseAsManager = async () => {
     if (!lease) return;
 
-    // Check if Arc wallet is connected
+    // Check if Arc wallet is connected - if not, just show wallet modal
     if (!isConnected) {
-      setError('Please connect Arc wallet first');
+      setShowWalletModal(true);
       return;
     }
     
@@ -483,10 +483,9 @@ const LeaseReviewPage: React.FC = () => {
                 <>
                   {/* Wallet Connection Section */}
                   <div className="bg-white rounded-lg p-6 shadow-sm border-2 border-gray-200">
-                    <h3 className="text-lg font-semibold text-gray-900 mb-4">Choose wallet to sign:</h3>
-                    
                     {!isConnected && (
                       <div className="space-y-3">
+                        <p className="text-sm text-gray-600 mb-3">Connect your wallet to sign this lease:</p>
                         <button
                           onClick={connectArcWallet}
                           className="w-full flex items-center justify-center gap-3 px-6 py-4 bg-blue-600 text-white rounded-xl hover:bg-blue-700 transition-all shadow-md hover:shadow-lg"
@@ -499,39 +498,41 @@ const LeaseReviewPage: React.FC = () => {
 
                     {/* Arc Wallet Connected */}
                     {isConnected && (
-                      <div className="bg-gradient-to-br from-blue-50 to-indigo-50 border-2 border-blue-300 rounded-xl p-5 space-y-3">
-                        <div className="flex items-center gap-3">
-                          <div className="w-12 h-12 bg-blue-100 rounded-full flex items-center justify-center">
-                            <Wallet className="w-6 h-6 text-blue-600" />
+                      <div className="space-y-3">
+                        <div className="bg-gradient-to-br from-blue-50 to-indigo-50 border-2 border-blue-300 rounded-xl p-5">
+                          <div className="flex items-center gap-3">
+                            <div className="w-12 h-12 bg-blue-100 rounded-full flex items-center justify-center">
+                              <Wallet className="w-6 h-6 text-blue-600" />
+                            </div>
+                            <div className="flex-1">
+                              <p className="text-sm font-semibold text-blue-900">Arc Wallet Connected</p>
+                              <p className="text-sm font-mono text-blue-900">{walletAddress.substring(0, 8)}...{walletAddress.substring(walletAddress.length - 6)}</p>
+                              <p className="text-xs text-green-600 mt-1 font-medium">✅ Ready to sign</p>
+                            </div>
+                            <CheckCircle className="w-6 h-6 text-green-600" />
                           </div>
-                          <div className="flex-1">
-                            <p className="text-sm font-semibold text-blue-900">Arc Wallet Connected</p>
-                            <p className="text-sm font-mono text-blue-900">{walletAddress.substring(0, 8)}...{walletAddress.substring(walletAddress.length - 6)}</p>
-                            <p className="text-xs text-green-600 mt-1 font-medium">✅ Ready to sign lease on-chain</p>
-                          </div>
-                          <CheckCircle className="w-6 h-6 text-green-600" />
                         </div>
+
+                        {/* Sign Lease Button */}
+                        <button
+                          onClick={signLeaseAsManager}
+                          disabled={signing}
+                          className="w-full flex items-center justify-center gap-3 px-6 py-4 bg-blue-700 text-white rounded-xl hover:bg-blue-800 transition-all shadow-md hover:shadow-lg disabled:bg-gray-300 disabled:text-gray-500 disabled:cursor-not-allowed"
+                        >
+                          {signing ? (
+                            <>
+                              <Loader className="w-4 h-4 animate-spin" />
+                              Signing...
+                            </>
+                          ) : (
+                            <>
+                              <FileSignature className="w-4 h-4" />
+                              Sign Lease
+                            </>
+                          )}
+                        </button>
                       </div>
                     )}
-
-                    {/* Sign Lease Button */}
-                    <button
-                      onClick={signLeaseAsManager}
-                      disabled={signing}
-                      className="w-full flex items-center justify-center gap-3 px-6 py-4 bg-blue-700 text-white rounded-xl hover:bg-blue-800 transition-all shadow-md hover:shadow-lg disabled:bg-gray-300 disabled:text-gray-500 disabled:cursor-not-allowed"
-                    >
-                      {signing ? (
-                        <>
-                          <Loader className="w-4 h-4 animate-spin" />
-                          Signing...
-                        </>
-                      ) : (
-                        <>
-                          <FileSignature className="w-4 h-4" />
-                          Sign Lease
-                        </>
-                      )}
-                    </button>
                   </div>
 
                   {/* Send to Tenant Button - Show when NOT signed OR when signed but not sent */}
