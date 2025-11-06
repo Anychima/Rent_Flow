@@ -203,42 +203,41 @@ const LeaseSigningPage: React.FC = () => {
   const signLease = async () => {
     if (!lease) return;
 
-    // Check if Arc wallet is connected
-    if (!arcWalletConnected) {
-      setError('Please connect Arc wallet first');
-      return;
-    }
-    
-    // Validate we have a wallet address
-    if (!arcWalletAddress) {
-      setError('Wallet address is required for signing. Please reconnect your wallet.');
-      return;
-    }
+    // NO LONGER REQUIRE WALLET CONNECTION FOR SIGNING
+    // Wallet is only needed for payments, not for signing the lease
+    // if (!arcWalletConnected) {
+    //   setError('Please connect Arc wallet first');
+    //   return;
+    // }
+    // 
+    // // Validate we have a wallet address
+    // if (!arcWalletAddress) {
+    //   setError('Wallet address is required for signing. Please reconnect your wallet.');
+    //   return;
+    // }
 
     try {
       setSigning(true);
       setError('');
 
-      console.log('📝 [Lease Signing] Signing lease (database only for hackathon)...');
-      console.log('   Wallet Type:', arcWalletType);
-      console.log('   Address:', arcWalletAddress);
+      console.log('📝 [Lease Signing] Signing lease (database only - no blockchain)...');
+      console.log('   User ID:', userProfile!.id);
       console.log('   Lease ID:', lease.id);
 
-      // TEMPORARY: Skip blockchain signing for hackathon
-      // Sign directly in database with mock transaction hash
-      const mockTxHash = `0x${Date.now().toString(16)}${Math.random().toString(16).slice(2, 18)}`;
+      // Sign lease in database only (no blockchain signature required)
+      const mockSignature = `DB_SIG_${Date.now()}_${Math.random().toString(36).substring(7)}`;
       
       console.log('💾 [Database] Saving signature to database...');
 
-      // Update lease in database
+      // Update lease in database - wallet info is optional for signing
       const response = await axios.post(`https://rent-flow.onrender.com/api/leases/${lease.id}/sign`, {
         signer_id: userProfile!.id,
-        signature: mockTxHash, // Mock signature for hackathon
+        signature: mockSignature, // Database-only signature
         signer_type: 'tenant',
-        wallet_address: arcWalletAddress,
-        wallet_type: arcWalletType,
+        wallet_address: arcWalletAddress || null, // Optional - only needed for payments
+        wallet_type: arcWalletType || null,
         wallet_id: arcWalletId || null,
-        blockchain_tx_hash: mockTxHash // Mock tx hash
+        blockchain_tx_hash: null // No blockchain signing
       });
 
       if (response.data.success) {
@@ -367,11 +366,12 @@ const LeaseSigningPage: React.FC = () => {
               <div className="flex-1">
                 <h2 className="text-2xl font-bold mb-2">Ready to Sign</h2>
                 <p className="text-blue-100 mb-6">
-                  Connect your preferred wallet to digitally sign this lease agreement. Your signature will be securely recorded on the blockchain.
+                  Click below to digitally sign this lease agreement. Your signature will be securely recorded in the database. You'll connect your wallet later to complete payments.
                 </p>
 
-                {/* Wallet Selection */}
-                {!arcWalletConnected && (
+                {/* NO WALLET CONNECTION NEEDED FOR SIGNING */}
+                {/* Wallet connection is only required for payments, not signing */}
+                {/* {!arcWalletConnected && (
                   <div className="space-y-3">
                     <p className="text-sm text-blue-100 font-medium">Connect your wallet to sign:</p>
                     <div className="flex gap-3">
@@ -386,29 +386,28 @@ const LeaseSigningPage: React.FC = () => {
                   </div>
                 )}
 
-                {/* Arc Wallet Connected */}
                 {arcWalletConnected && (
                   <div className="bg-white/10 backdrop-blur-sm border-2 border-white/30 rounded-lg p-4">
                     <p className="text-sm text-blue-100 mb-2">Arc Wallet Connected:</p>
                     <p className="font-mono text-sm">{arcWalletAddress.substring(0, 12)}...{arcWalletAddress.substring(arcWalletAddress.length - 8)}</p>
                     <p className="text-xs text-green-300 mt-2 font-medium">✅ Ready to sign lease on-chain</p>
                   </div>
-                )}
+                )} */}
 
                 <button
                   onClick={signLease}
                   disabled={signing}
-                  className="flex items-center space-x-2 px-8 py-4 bg-white text-blue-600 rounded-lg hover:bg-gray-100 transition-all font-bold shadow-lg hover:shadow-xl disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="flex items-center space-x-2 px-8 py-4 bg-white text-blue-600 rounded-lg hover:bg-gray-100 transition-all font-bold shadow-lg hover:shadow-xl disabled:opacity-50 disabled:cursor-not-allowed mt-6"
                 >
                   {signing ? (
                     <>
                       <Loader className="w-5 h-5 animate-spin" />
-                      <span>Signing with Arc...</span>
+                      <span>Signing Lease...</span>
                     </>
                   ) : (
                     <>
                       <FileSignature className="w-5 h-5" />
-                      <span>Sign with Arc</span>
+                      <span>Sign Lease Agreement</span>
                     </>
                   )}
                 </button>
