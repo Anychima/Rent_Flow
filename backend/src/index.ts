@@ -4218,8 +4218,7 @@ app.post('/api/leases/generate', async (req: Request, res: Response) => {
         lease_terms: leaseTerms,
         special_terms: specialTerms,
         generated_at: new Date().toISOString(),
-        manager_wallet_address: managerWalletAddress,  // Save manager's wallet
-        landlord_wallet: managerWalletAddress  // Alias for compatibility
+        manager_wallet_address: managerWalletAddress  // Save manager's wallet
       }])
       .select()
       .single();
