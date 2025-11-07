@@ -584,7 +584,7 @@ export default function PaymentSection({
               <div className="flex gap-2">
                 <AlertCircle className="w-5 h-5 text-yellow-600 flex-shrink-0 mt-0.5" />
                 <p className="text-sm text-yellow-800">
-                  <strong>Arc Testnet:</strong> This will transfer real USDC on Arc Testnet from your wallet to the property manager.
+                  <strong>Arc Testnet:</strong> This will transfer Test USDC on Arc Testnet from your wallet to the property manager.
                 </p>
               </div>
             </div>

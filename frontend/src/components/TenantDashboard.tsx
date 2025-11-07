@@ -72,7 +72,6 @@ export default function TenantDashboard() {
   const [activeTab, setActiveTab] = useState<'overview' | 'maintenance' | 'payments' | 'micropayments' | 'wallet'>('overview');
   const [showMaintenanceForm, setShowMaintenanceForm] = useState(false);
   const [showMicroPaymentForm, setShowMicroPaymentForm] = useState(false);
-  const [verifyingBlockchain, setVerifyingBlockchain] = useState(false);
   const [maintenanceForm, setMaintenanceForm] = useState({
     title: '',
     description: '',
@@ -454,44 +453,6 @@ Your payment is being processed.`);
     }
   };
 
-  const handleVerifyBlockchain = async () => {
-    if (!dashboardData?.lease?.id) return;
-
-    try {
-      setVerifyingBlockchain(true);
-      console.log('🔍 [Verify Blockchain] Checking lease on smart contract...', dashboardData.lease.id);
-
-      // Import smart contract service
-      const smartContractService = await import('../services/smartContractSigningService');
-      
-      // Check if lease is on-chain
-      const statusResult = await smartContractService.checkLeaseStatus(dashboardData.lease.id);
-
-      if (!statusResult.success) {
-        alert('❌ Failed to verify blockchain status: ' + (statusResult.error || 'Unknown error'));
-        return;
-      }
-
-      if (!statusResult.isFullySigned) {
-        alert('⚠️ Lease not found on blockchain. Both parties may need to sign again.');
-        return;
-      }
-
-      // Lease is on-chain, confirmed!
-      console.log('✅ [Verify Blockchain] Lease confirmed on-chain');
-      
-      // Refresh dashboard to get updated data
-      await fetchDashboard();
-      
-      alert('✅ Lease verified on Arc blockchain!\n\nLease ID: ' + dashboardData.lease.id.substring(0, 8) + '...\n\nIf the transaction hash still doesn\'t appear, please sign the lease again.');
-    } catch (error) {
-      console.error('❌ [Verify Blockchain] Error:', error);
-      alert('Failed to verify blockchain status. Please try again.');
-    } finally {
-      setVerifyingBlockchain(false);
-    }
-  };
-
   if (loading && !dashboardData) {
     return (
       <div className="min-h-screen bg-gray-50">
@@ -773,34 +734,26 @@ Your payment is being processed.`);
                         </div>
                       </div>
                     ) : dashboardData.lease.tenant_signed_at && dashboardData.lease.landlord_signed_at ? (
-                      <div className="bg-orange-50 rounded-lg p-4 border border-orange-200">
-                        <p className="text-sm text-orange-800 font-medium mb-2">
-                          ⏳ Processing Blockchain Storage
+                      <div className="bg-blue-50 rounded-lg p-4 border border-blue-200">
+                        <p className="text-sm text-blue-800 font-medium mb-2">
+                          ✨ Digital Lease Agreement Complete
                         </p>
-                        <p className="text-xs text-orange-700">
-                          Both parties have signed! Your lease is being submitted to the Arc blockchain. This usually takes a few moments.
+                        <p className="text-xs text-blue-700">
+                          Both parties have signed! Your lease agreement is securely stored in our database. Blockchain integration for immutable lease records is planned as a future enhancement.
                         </p>
-                        <div className="flex gap-3 mt-3">
+                        <div className="mt-3">
                           <button
                             onClick={() => fetchDashboard()}
-                            className="text-xs text-orange-600 hover:text-orange-800 font-medium underline"
+                            className="text-xs text-blue-600 hover:text-blue-800 font-medium underline"
                           >
-                            🔄 Refresh to check status
-                          </button>
-                          <span className="text-orange-400">•</span>
-                          <button
-                            onClick={handleVerifyBlockchain}
-                            disabled={verifyingBlockchain}
-                            className="text-xs text-orange-600 hover:text-orange-800 font-medium underline disabled:opacity-50"
-                          >
-                            {verifyingBlockchain ? '⏳ Verifying...' : '🔍 Verify on Blockchain'}
+                            🔄 Refresh dashboard
                           </button>
                         </div>
                       </div>
                     ) : (
                       <div className="bg-yellow-50 rounded-lg p-4 border border-yellow-200">
                         <p className="text-sm text-yellow-800">
-                          📝 <strong>Awaiting Digital Signatures:</strong> Your lease will be stored on Arc blockchain for immutability once both parties complete the digital signing process.
+                          📝 <strong>Awaiting Digital Signatures:</strong> Your lease will be finalized once both parties complete the signing process. Future blockchain integration will provide immutable lease records.
                         </p>
                         <div className="mt-2 text-xs text-yellow-700">
                           {!dashboardData.lease.tenant_signed_at && <p>• Tenant signature pending</p>}
