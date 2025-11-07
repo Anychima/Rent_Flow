@@ -39,10 +39,45 @@ export default function PaymentSection({
   const [processing, setProcessing] = useState<string | null>(null);
   const [error, setError] = useState('');
   const [confirmPayment, setConfirmPayment] = useState<Payment | null>(null);
+  const [walletBalance, setWalletBalance] = useState<number | null>(null);
+  const [loadingBalance, setLoadingBalance] = useState(false);
 
   useEffect(() => {
     fetchPayments();
   }, [leaseId]);
+
+  // Fetch wallet balance when wallet is connected
+  useEffect(() => {
+    if (walletConnected && walletId) {
+      fetchWalletBalance();
+    }
+  }, [walletConnected, walletId]);
+
+  const fetchWalletBalance = async () => {
+    if (!walletId) return;
+
+    try {
+      setLoadingBalance(true);
+      console.log('💰 [PaymentSection] Fetching wallet balance for:', walletId);
+      
+      // Use the Arc wallet service to get balance
+      const response = await axios.get(`${API_URL}/api/arc/wallet/${walletId}/balance`);
+      
+      if (response.data.success) {
+        const balance = parseFloat(response.data.data.usdcBalance || '0');
+        setWalletBalance(balance);
+        console.log('✅ [PaymentSection] Wallet balance:', balance, 'USDC');
+      } else {
+        console.warn('⚠️ [PaymentSection] Failed to fetch balance');
+        setWalletBalance(0);
+      }
+    } catch (err) {
+      console.error('❌ [PaymentSection] Error fetching balance:', err);
+      setWalletBalance(0);
+    } finally {
+      setLoadingBalance(false);
+    }
+  };
 
   const fetchPayments = async () => {
     try {
@@ -160,6 +195,11 @@ export default function PaymentSection({
         const txHash = response.data.data.transactionHash;
         const explorerUrl = response.data.data.explorerUrl;
         
+        // Refresh wallet balance immediately after payment
+        if (walletId) {
+          await fetchWalletBalance();
+        }
+        
         // Show success message
         alert(
           `Payment completed successfully!\n\n` +
@@ -199,11 +239,27 @@ export default function PaymentSection({
       }
     } catch (err: any) {
       console.error('❌ [Payment] Error:', err);
-      setError(
-        err.response?.data?.error || 
-        err.message || 
-        'Payment failed. Please try again. If your wallet was debited, please contact support.'
-      );
+      
+      // Extract error message properly
+      let errorMessage = 'Payment failed. Please try again.';
+      
+      if (err.response?.data?.error) {
+        // API error response
+        if (typeof err.response.data.error === 'string') {
+          errorMessage = err.response.data.error;
+        } else if (err.response.data.error.message) {
+          errorMessage = err.response.data.error.message;
+        }
+      } else if (err.message) {
+        errorMessage = err.message;
+      }
+      
+      setError(errorMessage);
+      
+      // Refresh balance after payment attempt
+      if (walletId) {
+        await fetchWalletBalance();
+      }
     } finally {
       setProcessing(null);
     }
@@ -279,15 +335,42 @@ export default function PaymentSection({
         )}
       </div>
 
-      {/* Wallet Info */}
+      {/* Wallet Info with Balance */}
       {walletConnected && (
-        <div className="bg-white/60 rounded-lg p-4 border border-blue-200">
-          <p className="text-xs font-medium text-gray-600 mb-1">
-            Arc Wallet (Circle)
-          </p>
-          <p className="font-mono text-sm text-gray-900">
-            {walletAddress?.substring(0, 12)}...{walletAddress?.substring(walletAddress.length - 8)}
-          </p>
+        <div className="bg-white/80 rounded-lg p-4 border-2 border-blue-200 space-y-3">
+          <div>
+            <p className="text-xs font-medium text-gray-600 mb-1">
+              Arc Wallet (Circle)
+            </p>
+            <p className="font-mono text-sm text-gray-900">
+              {walletAddress?.substring(0, 12)}...{walletAddress?.substring(walletAddress.length - 8)}
+            </p>
+          </div>
+          
+          <div className="pt-3 border-t border-gray-200">
+            <div className="flex items-center justify-between">
+              <p className="text-xs font-medium text-gray-600">
+                Available Balance
+              </p>
+              {loadingBalance ? (
+                <Loader className="w-4 h-4 animate-spin text-blue-600" />
+              ) : (
+                <p className="text-lg font-bold text-green-600">
+                  ${(walletBalance || 0).toFixed(2)} <span className="text-xs text-gray-500">USDC</span>
+                </p>
+              )}
+            </div>
+            
+            {/* Insufficient balance warning */}
+            {walletBalance !== null && totalDue > walletBalance && (
+              <div className="mt-2 bg-red-50 border border-red-200 rounded-lg p-2">
+                <p className="text-xs text-red-800 flex items-center gap-1">
+                  <AlertCircle className="w-3 h-3" />
+                  Insufficient balance. You need ${(totalDue - walletBalance).toFixed(2)} more USDC.
+                </p>
+              </div>
+            )}
+          </div>
         </div>
       )}
 

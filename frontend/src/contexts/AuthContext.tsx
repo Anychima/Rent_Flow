@@ -120,7 +120,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       if (!emailData.wallet_address) {
         console.log('🔄 [AuthContext] User has no wallet_address, checking user_wallets table...');
         try {
-          const walletResponse = await fetch(`${process.env.REACT_APP_BACKEND_URL || 'http://localhost:3001'}/api/users/${emailData.id}/primary-wallet`);
+          // Add 5 second timeout to prevent login from hanging
+          const controller = new AbortController();
+          const timeoutId = setTimeout(() => controller.abort(), 5000);
+          
+          const walletResponse = await fetch(
+            `${process.env.REACT_APP_BACKEND_URL || 'http://localhost:3001'}/api/users/${emailData.id}/primary-wallet`,
+            { signal: controller.signal }
+          );
+          clearTimeout(timeoutId);
           console.log('🔄 [AuthContext] Wallet sync response status:', walletResponse.status);
           
           if (walletResponse.ok) {
@@ -137,8 +145,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           } else {
             console.error('❌ [AuthContext] Wallet sync request failed:', walletResponse.status, await walletResponse.text());
           }
-        } catch (err) {
-          console.error('❌ [AuthContext] Error syncing wallet:', err);
+        } catch (err: any) {
+          if (err.name === 'AbortError') {
+            console.error('❌ [AuthContext] Wallet sync timed out after 5 seconds - continuing login anyway');
+          } else {
+            console.error('❌ [AuthContext] Error syncing wallet:', err);
+          }
         }
       } else {
         console.log('✅ [AuthContext] User already has wallet_address:', emailData.wallet_address);

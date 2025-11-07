@@ -58,25 +58,66 @@ const LeaseSigningPage: React.FC = () => {
     }
 
     fetchLease();
-  }, [id, user]); // Wallet is loaded by WalletContext - no need to load here
+    
+    // Also fetch and sync wallet on page load
+    syncWalletFromBackend();
+  }, [id, user]);
 
-  // Load wallet from user profile if WalletContext doesn't have it
+  // Fetch wallet directly from backend and sync to context
+  const syncWalletFromBackend = async () => {
+    // Skip if wallet is already loaded in context
+    if (contextIsConnected && contextWalletAddress && contextWalletId) {
+      console.log('✅ [Wallet Sync] Wallet already loaded from context:', contextWalletAddress);
+      return;
+    }
+    
+    // Skip if userProfile has wallet and it's already in context
+    if (userProfile?.wallet_address && contextWalletAddress === userProfile.wallet_address) {
+      console.log('✅ [Wallet Sync] Wallet already synced from userProfile');
+      return;
+    }
+    
+    if (!userProfile?.id) {
+      console.log('⏳ [Wallet Sync] Waiting for userProfile to load...');
+      return;
+    }
+    
+    try {
+      console.log('🔄 [Wallet Sync] Fetching wallet from backend for user:', userProfile.id);
+      const API_URL = process.env.REACT_APP_BACKEND_URL || 'http://localhost:3001';
+      const response = await axios.get(`${API_URL}/api/users/${userProfile.id}/primary-wallet`);
+      
+      if (response.data.success && response.data.data) {
+        const wallet = response.data.data;
+        console.log('✅ [Wallet Sync] Found wallet in backend:', wallet.wallet_address);
+        
+        // Sync to context
+        saveToContext(
+          wallet.wallet_address,
+          wallet.circle_wallet_id || '',
+          wallet.wallet_type || 'circle'
+        );
+        
+        console.log('✅ [Wallet Sync] Wallet synced to context successfully');
+      } else {
+        console.log('ℹ️ [Wallet Sync] No wallet found in backend');
+      }
+    } catch (err) {
+      console.error('❌ [Wallet Sync] Error fetching wallet from backend:', err);
+    }
+  };
+
+  // Also sync when userProfile changes (e.g., after refreshUserProfile is called)
   useEffect(() => {
-    // Only run if userProfile is loaded and has a wallet_address
-    if (!userProfile?.wallet_address) return;
-    
-    // Only run if WalletContext doesn't already have a wallet
-    if (contextIsConnected && contextWalletAddress) return;
-    
-    console.log('🔄 [Wallet Recovery] Loading wallet from user profile:', userProfile.wallet_address);
-    
-    // Load wallet into WalletContext
-    saveToContext(
-      userProfile.wallet_address, 
-      userProfile.circle_wallet_id || '', 
-      userProfile.circle_wallet_id ? 'circle' : 'external'
-    );
-  }, [userProfile?.wallet_address, contextIsConnected, contextWalletAddress, userProfile?.circle_wallet_id, saveToContext]);
+    if (userProfile?.wallet_address && !contextWalletAddress) {
+      console.log('🔄 [Wallet Recovery] Loading wallet from userProfile:', userProfile.wallet_address);
+      saveToContext(
+        userProfile.wallet_address,
+        userProfile.circle_wallet_id || '',
+        userProfile.circle_wallet_id ? 'circle' : 'external'
+      );
+    }
+  }, [userProfile?.wallet_address, userProfile?.circle_wallet_id]);
 
   // Debug: Log wallet connection state
   useEffect(() => {
@@ -191,13 +232,18 @@ const LeaseSigningPage: React.FC = () => {
     // Save to WalletContext (which also saves to localStorage)
     saveToContext(walletAddress, walletId, walletType);
     
+    // Close the modal
+    setShowWalletModal(false);
+    
     // Show appropriate message based on wallet type
     if (walletType === 'circle') {
       setSuccess(`Circle wallet connected! Address: ${walletAddress.substring(0, 8)}...${walletAddress.substring(walletAddress.length - 6)}`);
     } else {
-      setSuccess(`External wallet connected! Address: ${walletAddress.substring(0, 8)}...${walletAddress.substring(walletAddress.length - 6)}\n✅ You can now sign leases with this wallet!`);
+      setSuccess(`External wallet connected! Address: ${walletAddress.substring(0, 8)}...${walletAddress.substring(walletAddress.length - 6)}\n✅ You can now make payments with this wallet!`);
     }
     setTimeout(() => setSuccess(''), 5000);
+    
+    console.log('✅ [Wallet Connected] Wallet synced successfully:', { walletAddress, walletId, walletType });
   };
 
   const signLease = async () => {

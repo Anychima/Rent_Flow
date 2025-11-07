@@ -209,7 +209,21 @@ class ArcWalletService {
         };
       }
 
-      console.log('✅ [ArcWallet] Wallet retrieved:', wallet.address);
+      // Fetch balance
+      console.log('💰 [ArcWallet] Fetching wallet balance...');
+      const balanceResult = await this.getWalletBalance(walletId);
+      
+      // Add balance to wallet object
+      if (balanceResult.success) {
+        wallet.balance = balanceResult.usdcBalance || '0';
+        wallet.balances = balanceResult.balances || [];
+        console.log('✅ [ArcWallet] Wallet retrieved with balance:', wallet.address, '|', wallet.balance, 'USDC');
+      } else {
+        wallet.balance = '0';
+        wallet.balances = [];
+        console.log('⚠️ [ArcWallet] Wallet retrieved but balance fetch failed:', wallet.address);
+      }
+
       return {
         success: true,
         wallet
@@ -291,20 +305,30 @@ class ArcWalletService {
 
     try {
       console.log(`💰 [ArcWallet] Fetching balance for wallet ${walletId}...`);
-      const response = await this.client.getWalletBalances({ walletId });
+      
+      // Use 'id' instead of 'walletId' as the parameter name
+      const response = await this.client.getWalletTokenBalance({ 
+        id: walletId 
+      });
+      
+      console.log('📊 [ArcWallet] Balance response:', JSON.stringify(response?.data, null, 2));
       
       const balances = response?.data?.tokenBalances || [];
       
-      // Find USDC balance
+      // Find USDC balance (look for USDC-TESTNET or USDC symbol)
       const usdcBalance = balances.find((b: any) => 
-        b.token?.symbol === 'USDC'
+        b.token?.symbol === 'USDC' || 
+        b.token?.symbol === 'USDC-TESTNET' ||
+        b.token?.name?.includes('USDC')
       );
 
-      console.log('✅ [ArcWallet] Balance retrieved:', usdcBalance?.amount || '0');
+      const balanceAmount = usdcBalance?.amount || '0';
+      console.log('✅ [ArcWallet] USDC Balance found:', balanceAmount, 'USDC');
+      
       return {
         success: true,
         balances,
-        usdcBalance: usdcBalance?.amount || '0'
+        usdcBalance: balanceAmount
       };
     } catch (error: any) {
       console.error('❌ [ArcWallet] Error fetching balance:', error?.response?.data || error.message || error);

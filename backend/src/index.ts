@@ -520,6 +520,201 @@ app.post('/api/arc/sign-lease-contract',
   })
 );
 
+// ==================== Arc Payment Endpoints ====================
+
+// Send USDC payment on Arc Testnet
+app.post('/api/arc/payment/send',
+  validateBody({
+    fromWalletId: { type: 'string', required: true },
+    toAddress: { type: 'string', required: true },
+    amount: { type: 'number', required: true, min: 0.01 },
+    paymentId: { type: 'string', required: true },
+    leaseId: { type: 'string', required: true },
+    feeLevel: { type: 'string', required: false, enum: ['LOW', 'MEDIUM', 'HIGH'] }
+  }),
+  asyncHandler(async (req: Request, res: Response) => {
+    const { fromWalletId, toAddress, amount, paymentId, leaseId, feeLevel } = req.body;
+
+    logger.info('Processing Arc payment', { 
+      fromWalletId, 
+      toAddress, 
+      amount, 
+      paymentId,
+      leaseId 
+    }, 'ARC_PAYMENT');
+
+    // Step 1: Get tenant wallet details and balance
+    logger.info('🔍 [Payment] Fetching tenant wallet details...', undefined, 'ARC_PAYMENT');
+    const walletResult = await arcWalletService.getWallet(fromWalletId);
+    
+    if (!walletResult.success || !walletResult.wallet) {
+      throw ApiErrors.notFound('Tenant wallet not found. Please connect your wallet first.');
+    }
+
+    const wallet = walletResult.wallet;
+    logger.info('💼 [Payment] Tenant wallet found:', { 
+      address: wallet.address,
+      blockchain: wallet.blockchain 
+    }, 'ARC_PAYMENT');
+
+    // Step 2: Check wallet balance
+    const balance = parseFloat(wallet.balance || '0');
+    logger.info(`💰 [Payment] Tenant wallet balance: ${balance} USDC`, undefined, 'ARC_PAYMENT');
+
+    if (balance < amount) {
+      const shortfall = amount - balance;
+      throw ApiErrors.badRequest(
+        `Insufficient balance. You have ${balance.toFixed(2)} USDC but need ${amount.toFixed(2)} USDC. ` +
+        `Please add ${shortfall.toFixed(2)} USDC to your wallet first.`
+      );
+    }
+
+    // Step 3: Verify manager wallet address exists
+    if (!toAddress || !toAddress.startsWith('0x')) {
+      throw ApiErrors.badRequest('Invalid manager wallet address. Manager must sign the lease first.');
+    }
+
+    logger.info('✅ [Payment] Validation passed. Proceeding with transfer...', undefined, 'ARC_PAYMENT');
+
+    // Step 4: Send payment via Arc Testnet
+    const paymentResult = await arcPaymentService.sendPayment(
+      fromWalletId,
+      toAddress,
+      amount,
+      (feeLevel as 'LOW' | 'MEDIUM' | 'HIGH') || 'MEDIUM'
+    );
+
+    if (!paymentResult.success) {
+      logger.error('❌ [Payment] Transfer failed:', paymentResult.error, 'ARC_PAYMENT');
+      
+      // Update payment status to failed
+      await supabase
+        .from('rent_payments')
+        .update({
+          status: 'failed',
+          notes: paymentResult.error || 'Payment failed',
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', paymentId);
+
+      throw ApiErrors.internal(paymentResult.error || 'Payment failed');
+    }
+
+    logger.success('✅ [Payment] Transfer successful!', { 
+      transactionId: paymentResult.transactionId,
+      transactionHash: paymentResult.transactionHash 
+    }, 'ARC_PAYMENT');
+
+    // Step 5: Update payment record in database
+    const { error: updateError } = await supabase
+      .from('rent_payments')
+      .update({
+        status: 'completed',
+        payment_date: new Date().toISOString(),
+        transaction_hash: paymentResult.transactionHash || null,
+        blockchain_network: 'arc-testnet',
+        notes: `Paid via Arc Testnet. TX: ${paymentResult.transactionHash || paymentResult.transactionId}`
+      })
+      .eq('id', paymentId);
+
+    if (updateError) {
+      logger.error('❌ [Payment] Failed to update payment record:', updateError, 'ARC_PAYMENT');
+      throw ApiErrors.internal('Payment sent but failed to update record. Please contact support.');
+    }
+
+    // Step 6: Check if all payments for the lease are complete
+    const { data: allPayments } = await supabase
+      .from('rent_payments')
+      .select('id, status, payment_type')
+      .eq('lease_id', leaseId);
+
+    const hasSecurityDeposit = allPayments?.some(p => p.payment_type === 'security_deposit' && p.status === 'completed');
+    const hasFirstRent = allPayments?.some(p => p.payment_type === 'rent' && p.status === 'completed');
+    const allComplete = hasSecurityDeposit && hasFirstRent;
+
+    logger.info('📊 [Payment] Payment completion status:', {
+      hasSecurityDeposit,
+      hasFirstRent,
+      allComplete
+    }, 'ARC_PAYMENT');
+
+    // Step 7: If all payments complete, activate lease and promote tenant
+    if (allComplete) {
+      logger.info('🎉 [Payment] All payments complete! Activating lease...', undefined, 'ARC_PAYMENT');
+      
+      // Get lease details
+      const { data: lease } = await supabase
+        .from('leases')
+        .select('tenant_id')
+        .eq('id', leaseId)
+        .single();
+
+      if (lease) {
+        // Update lease status to active
+        await supabase
+          .from('leases')
+          .update({ 
+            lease_status: 'active',
+            status: 'active'
+          })
+          .eq('id', leaseId);
+
+        // Promote user to tenant role
+        const transitionResult = await transitionUserToTenant(supabase, lease.tenant_id);
+        
+        if (transitionResult.success) {
+          logger.success('✅ [Payment] Lease activated and user promoted to tenant!', undefined, 'ARC_PAYMENT');
+        } else {
+          logger.warn('⚠️ [Payment] Lease activated but user role update failed', transitionResult, 'ARC_PAYMENT');
+        }
+      }
+    }
+
+    // Return success response
+    res.json({
+      success: true,
+      data: {
+        transactionId: paymentResult.transactionId,
+        transactionHash: paymentResult.transactionHash,
+        state: paymentResult.state,
+        explorerUrl: paymentResult.transactionHash 
+          ? `https://testnet.arcscan.app/tx/${paymentResult.transactionHash}`
+          : null,
+        walletBalance: balance,
+        amountPaid: amount,
+        remainingBalance: balance - amount,
+        allPaymentsComplete: allComplete
+      }
+    });
+  })
+);
+
+// Get wallet balance
+app.get('/api/arc/wallet/:walletId/balance',
+  validateParams({
+    walletId: { type: 'string', required: true }
+  }),
+  asyncHandler(async (req: Request, res: Response) => {
+    const { walletId } = req.params;
+
+    logger.info('Fetching wallet balance', { walletId }, 'ARC_WALLET');
+
+    const result = await arcWalletService.getWalletBalance(walletId);
+
+    if (!result.success) {
+      throw ApiErrors.internal(result.error || 'Failed to fetch wallet balance');
+    }
+
+    res.json({
+      success: true,
+      data: {
+        usdcBalance: result.usdcBalance || '0',
+        balances: result.balances || []
+      }
+    });
+  })
+);
+
 // Save Phantom wallet address to database
 app.post('/api/wallet/phantom/connect',
   validateBody({
@@ -5355,196 +5550,7 @@ app.post('/api/arc/payment/estimate-fee', async (req: Request, res: Response) =>
 });
 
 // Send USDC payment on Arc Testnet
-app.post('/api/arc/payment/send', async (req: Request, res: Response) => {
-  try {
-    const { fromWalletId, toAddress, amount, feeLevel, paymentId, leaseId } = req.body;
 
-    if (!fromWalletId || !toAddress || !amount) {
-      return res.status(400).json({
-        success: false,
-        error: 'fromWalletId, toAddress, and amount are required'
-      });
-    }
-
-    console.log('💸 [ArcPayment] Processing payment:', {
-      fromWalletId,
-      toAddress,
-      amount,
-      feeLevel: feeLevel || 'MEDIUM',
-      paymentId,
-      leaseId
-    });
-
-    const result = await arcPaymentService.sendPayment(
-      fromWalletId,
-      toAddress,
-      amount,
-      feeLevel || 'MEDIUM'
-    );
-
-    if (!result.success) {
-      // Update payment status to failed if paymentId provided
-      if (paymentId) {
-        await supabase
-          .from('rent_payments')
-          .update({
-            status: 'failed',
-            notes: result.error || 'Payment failed',
-            updated_at: new Date().toISOString()
-          })
-          .eq('id', paymentId);
-      }
-
-      return res.status(400).json(result);
-    }
-
-    // TODO: RECORD PAYMENT DECISION ON-CHAIN (service not yet deployed)
-    let onChainDecisionId: string | undefined;
-    // try {
-    //   const onChainResult = await aiDecisionsContract.recordPaymentDecision({
-    //     tenant: fromWalletId,
-    //     landlord: toAddress,
-    //     amountUSDC: amount,
-    //     approved: true,
-    //     confidenceScore: 100,
-    //     reasoning: `User-initiated rent payment via Arc Testnet. Payment ID: ${paymentId || 'N/A'}. Lease ID: ${leaseId || 'N/A'}`
-    //   });
-    //   onChainDecisionId = onChainResult.decisionId;
-    //   console.log(`✅ [Blockchain] Payment decision recorded on-chain: ${onChainDecisionId}`);
-    // } catch (error) {
-    //   console.error('⚠️ [Blockchain] Failed to record payment decision on-chain:', error);
-    // }
-
-    // Payment successful OR still processing - update payment record if paymentId provided
-    if (paymentId) {
-      // For now, mark as completed if we have a transaction hash
-      // The transaction was successfully submitted to the blockchain
-      const paymentStatus = 'completed';  // Always mark as completed when TX submitted
-      const paymentNotes = result.state === 'CONFIRMED'
-        ? `Paid via Arc Testnet - TX: ${result.transactionHash}`
-        : `Transaction submitted to Arc Testnet - State: ${result.state || 'pending'} - TX: ${result.transactionHash || result.transactionId} - Check https://testnet.arcscan.app`;
-      
-      const { error: updateError } = await supabase
-        .from('rent_payments')
-        .update({
-          status: paymentStatus,
-          transaction_hash: result.transactionHash || result.transactionId,
-          payment_date: new Date().toISOString(),
-          blockchain_network: 'arc',
-          blockchain_decision_id: onChainDecisionId, // Link to on-chain decision
-          notes: paymentNotes
-        })
-        .eq('id', paymentId);
-
-      // TODO: RECORD PAYMENT ON RENTFLOW CORE CONTRACT (service not yet deployed)
-      // if (rentFlowCoreService.isReady() && leaseId) {
-      //   try {
-      //     const { data: lease } = await supabase
-      //       .from('leases')
-      //       .select('blockchain_lease_id')
-      //       .eq('id', leaseId)
-      //       .single();
-      //     if (lease?.blockchain_lease_id) {
-      //       const coreResult = await rentFlowCoreService.recordRentPayment({
-      //         leaseId: lease.blockchain_lease_id,
-      //         amount: amount
-      //       });
-      //       if (coreResult.success) {
-      //         console.log('✅ [RentFlowCore] Rent payment recorded on-chain');
-      //       }
-      //     }
-      //   } catch (coreError) {
-      //     console.error('⚠️ [RentFlowCore] Failed to record rent payment on-chain:', coreError);
-      //   }
-      // }
-
-      // TODO: Mark payment as executed on-chain (service not yet deployed)
-      // if (onChainDecisionId && result.transactionHash) {
-      //   try {
-      //     await aiDecisionsContract.markPaymentExecuted(
-      //       onChainDecisionId,
-      //       result.transactionHash
-      //     );
-      //     console.log(`✅ [Blockchain] Payment marked as executed on-chain`);
-      //   } catch (error) {
-      //     console.error('⚠️ [Blockchain] Failed to mark payment executed on-chain:', error);
-      //   }
-      // }
-
-      if (updateError) {
-        console.error('❌ [ArcPayment] Failed to update payment record:', updateError);
-      } else {
-        console.log('✅ [ArcPayment] Payment record updated successfully');
-
-        // Check if all initial payments are complete for this lease
-        if (leaseId) {
-          const { data: allPayments } = await supabase
-            .from('rent_payments')
-            .select('*')
-            .eq('lease_id', leaseId)
-            .in('payment_type', ['security_deposit', 'rent'])
-            .eq('status', 'pending');
-
-          if (!allPayments || allPayments.length === 0) {
-            // All initial payments complete! Activate lease
-            console.log('🎉 [ArcPayment] All initial payments complete - activating lease...');
-
-            const { error: leaseError } = await supabase
-              .from('leases')
-              .update({
-                lease_status: 'active',
-                activated_at: new Date().toISOString()
-              })
-              .eq('id', leaseId);
-
-            if (leaseError) {
-              console.error('❌ [ArcPayment] Failed to activate lease:', leaseError);
-            } else {
-              console.log('✅ [ArcPayment] Lease activated successfully!');
-
-              // Promote prospective_tenant to tenant
-              const { data: lease } = await supabase
-                .from('leases')
-                .select('tenant_id')
-                .eq('id', leaseId)
-                .single();
-
-              if (lease?.tenant_id) {
-                await supabase
-                  .from('users')
-                  .update({
-                    role: 'tenant',
-                    user_type: 'tenant'
-                  })
-                  .eq('id', lease.tenant_id);
-
-                console.log('✅ [ArcPayment] User promoted to tenant status');
-              }
-            }
-          }
-        }
-      }
-    }
-
-    res.json({
-      success: true,
-      data: {
-        transactionId: result.transactionId,
-        transactionHash: result.transactionHash,
-        state: result.state,
-        explorerUrl: result.transactionHash 
-          ? `https://testnet.arcscan.app/tx/${result.transactionHash}`
-          : undefined
-      }
-    });
-  } catch (error) {
-    console.error('❌ [ArcPayment] Error processing payment:', error);
-    res.status(500).json({
-      success: false,
-      error: error instanceof Error ? error.message : 'Unknown error'
-    });
-  }
-});
 
 // Get Arc payment transaction status
 app.get('/api/arc/payment/transaction/:transactionId', async (req: Request, res: Response) => {
