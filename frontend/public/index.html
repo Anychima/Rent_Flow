@@ -18,6 +18,71 @@
     <meta name="twitter:title" content="RentFlow AI - Property Management Dashboard" />
     <meta name="twitter:description" content="RentFlow AI - Property Management on Arc Network with USDC" />
     <title>RentFlow AI - Property Management Dashboard</title>
+    
+    <!-- Suppress MetaMask errors EARLY (before React loads) -->
+    <script>
+      // Suppress console errors from MetaMask extension
+      (function() {
+        const originalError = console.error;
+        console.error = function() {
+          const args = Array.prototype.slice.call(arguments);
+          const errorMessage = args.join(' ').toLowerCase();
+          
+          // Filter out MetaMask-related errors
+          if (errorMessage.includes('metamask') || 
+              errorMessage.includes('chrome-extension') ||
+              errorMessage.includes('failed to connect') ||
+              errorMessage.includes('ethereum')) {
+            // Log silently for debugging
+            console.log('[RentFlow] Suppressed MetaMask error:', args[0]);
+            return;
+          }
+          
+          // Pass through all other errors
+          originalError.apply(console, args);
+        };
+
+        // Suppress unhandled promise rejections from MetaMask
+        window.addEventListener('unhandledrejection', function(event) {
+          if (!event || !event.reason) return;
+          
+          const errorMessage = (event.reason.message || event.reason || '').toLowerCase();
+          const errorStack = (event.reason.stack || '').toLowerCase();
+          
+          // Filter MetaMask errors
+          if (errorMessage.includes('metamask') || 
+              errorMessage.includes('chrome-extension') ||
+              errorMessage.includes('failed to connect') ||
+              errorStack.includes('chrome-extension') ||
+              errorStack.includes('inpage.js')) {
+            event.preventDefault();
+            event.stopPropagation();
+            console.log('[RentFlow] Suppressed MetaMask promise rejection');
+            return false;
+          }
+        }, true);
+
+        // Suppress React error overlay for MetaMask errors
+        window.addEventListener('error', function(event) {
+          if (!event || !event.error) return;
+          
+          const errorMessage = (event.error.message || event.message || '').toLowerCase();
+          const errorStack = (event.error.stack || '').toLowerCase();
+          
+          // Filter MetaMask errors
+          if (errorMessage.includes('metamask') || 
+              errorMessage.includes('chrome-extension') ||
+              errorMessage.includes('failed to connect') ||
+              errorStack.includes('chrome-extension') ||
+              errorStack.includes('inpage.js')) {
+            event.preventDefault();
+            event.stopPropagation();
+            console.log('[RentFlow] Suppressed MetaMask error event');
+            return false;
+          }
+        }, true);
+      })();
+    </script>
   </head>
   <body>
     <noscript>You need to enable JavaScript to run this app.</noscript>

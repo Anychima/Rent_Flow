@@ -7,8 +7,8 @@ import WalletManagement from './WalletManagement';
 import PropertyComparisonModal from './PropertyComparisonModal';
 import { PropertyListSkeleton } from './SkeletonLoader';
 
-// Use deployed backend URL or fallback to localhost for development
-const API_URL = process.env.REACT_APP_BACKEND_URL || 'https://rent-flow.onrender.com';
+// Use backend URL from env or fallback to localhost for development
+const API_URL = process.env.REACT_APP_BACKEND_URL || 'http://localhost:3001';
 
 interface Property {
   id: string;

@@ -120,7 +120,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       if (!emailData.wallet_address) {
         console.log('🔄 [AuthContext] User has no wallet_address, checking user_wallets table...');
         try {
-          const walletResponse = await fetch(`${process.env.REACT_APP_BACKEND_URL || 'https://rent-flow.onrender.com'}/api/users/${emailData.id}/primary-wallet`);
+          const walletResponse = await fetch(`${process.env.REACT_APP_BACKEND_URL || 'http://localhost:3001'}/api/users/${emailData.id}/primary-wallet`);
           console.log('🔄 [AuthContext] Wallet sync response status:', walletResponse.status);
           
           if (walletResponse.ok) {

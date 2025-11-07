@@ -22,6 +22,75 @@ import circleSigningService from './services/circleSigningService';
 import arcWalletService from './services/arcWalletService';
 import arcPaymentService from './services/arcPaymentService';
 
+// Unified function to transition user from prospective_tenant to tenant
+async function transitionUserToTenant(supabase: any, tenantId: string): Promise<{ success: boolean; message: string; error?: string }> {
+  try {
+    logger.info(`Transitioning user to tenant: ${tenantId}`, undefined, 'USER_ROLE_TRANSITION');
+    
+    // Get user by ID first
+    const { data: user, error: fetchError } = await supabase
+      .from('users')
+      .select('id, email')
+      .eq('id', tenantId)
+      .maybeSingle();
+    
+    if (fetchError) {
+      logger.error('Error fetching user by ID:', fetchError, 'USER_ROLE_TRANSITION');
+      return { success: false, message: 'Failed to fetch user', error: fetchError.message };
+    }
+    
+    if (!user) {
+      logger.warn(`User not found with ID: ${tenantId}`, undefined, 'USER_ROLE_TRANSITION');
+      return { success: false, message: 'User not found', error: 'User not found with provided ID' };
+    }
+    
+    // Update by ID first
+    const { data: updatedUser, error: updateError } = await supabase
+      .from('users')
+      .update({
+        role: 'tenant',
+        user_type: 'tenant'
+      })
+      .eq('id', tenantId)
+      .select('*')
+      .single();
+
+    if (updateError) {
+      logger.error('Error updating user role by ID:', updateError, 'USER_ROLE_TRANSITION');
+      
+      // Fallback: try updating by email
+      if (user.email) {
+        const { data: updatedUserByEmail, error: emailUpdateError } = await supabase
+          .from('users')
+          .update({
+            role: 'tenant',
+            user_type: 'tenant'
+          })
+          .eq('email', user.email)
+          .select('*')
+          .single();
+          
+        if (emailUpdateError) {
+          logger.error('Error updating user role by email:', emailUpdateError, 'USER_ROLE_TRANSITION');
+          return { success: false, message: 'Failed to update user role', error: emailUpdateError.message };
+        } else {
+          logger.success('User role updated to tenant by email', { user: updatedUserByEmail }, 'USER_ROLE_TRANSITION');
+          return { success: true, message: 'User role updated to tenant by email' };
+        }
+      }
+      
+      return { success: false, message: 'Failed to update user role', error: updateError.message };
+    } else {
+      logger.success('User role updated to tenant by ID', { user: updatedUser }, 'USER_ROLE_TRANSITION');
+      return { success: true, message: 'User role updated to tenant by ID' };
+    }
+  } catch (error) {
+    logger.error('Error in transitionUserToTenant:', error, 'USER_ROLE_TRANSITION');
+    return { success: false, message: 'Internal error', error: error instanceof Error ? error.message : 'Unknown error' };
+  }
+}
+
+
 // Validate environment variables on startup
 const envValidation = validateEnvironment();
 if (!envValidation.isValid) {
@@ -72,8 +141,8 @@ app.get('/api/health', (_req: Request, res: Response) => {
   });
 });
 
-// Debug endpoint to check user existence
-app.get('/api/debug/user/:email', async (req: Request, res: Response) => {
+// Debug endpoint to check user existence by email
+app.get('/api/debug/user/email/:email', async (req: Request, res: Response) => {
   try {
     const { email } = req.params;
     
@@ -87,6 +156,52 @@ app.get('/api/debug/user/:email', async (req: Request, res: Response) => {
       success: true,
       exists: !!data,
       data: data || null,
+      error: error?.message || null
+    });
+  } catch (err) {
+    res.status(500).json({
+      success: false,
+      error: err instanceof Error ? err.message : 'Unknown error'
+    });
+  }
+});
+
+// Debug endpoint to check user existence by ID
+app.get('/api/debug/user/id/:userId', async (req: Request, res: Response) => {
+  try {
+    const { userId } = req.params;
+    
+    const { data, error } = await supabase
+      .from('users')
+      .select('id, email, full_name, role, is_active, wallet_address, circle_wallet_id')
+      .eq('id', userId)
+      .maybeSingle();
+    
+    res.json({
+      success: true,
+      exists: !!data,
+      data: data || null,
+      error: error?.message || null
+    });
+  } catch (err) {
+    res.status(500).json({
+      success: false,
+      error: err instanceof Error ? err.message : 'Unknown error'
+    });
+  }
+});
+
+// Debug endpoint to get all users
+app.get('/api/debug/users', async (_req: Request, res: Response) => {
+  try {
+    const { data, error } = await supabase
+      .from('users')
+      .select('id, email, full_name, role, is_active, wallet_address, circle_wallet_id, created_at')
+      .order('created_at', { ascending: false });
+    
+    res.json({
+      success: true,
+      data: data || [],
       error: error?.message || null
     });
   } catch (err) {
@@ -132,6 +247,16 @@ app.get('/api/blockchain/info', (_req: Request, res: Response) => {
     });
   }
 });
+
+// NOTE: 404 handler is at the end of the file after all routes are defined
+// Error handler (must be after all routes but before 404 handler)
+// app.use(errorHandler); // Moved to end of file
+
+if (process.env.NODE_ENV === 'development') {
+  logger.warn('Running in development mode. Ensure you have set up your environment variables correctly.', {}, 'STARTUP');
+}
+
+// Removed duplicate app.listen call - keeping only the one at the end of the file
 
 // ==================== Circle Wallet Endpoints ====================
 
@@ -932,6 +1057,12 @@ app.put('/api/leases/:id',
   })
 );
 
+// Test endpoint
+app.get('/api/test', (req: Request, res: Response) => {
+  console.log('🔍 [Test] Test endpoint hit');
+  res.json({ success: true, message: 'Test endpoint working' });
+});
+
 // Get user's primary wallet and sync to profile
 app.get('/api/users/:userId/primary-wallet',
   validateParams({
@@ -941,6 +1072,7 @@ app.get('/api/users/:userId/primary-wallet',
     const { userId } = req.params;
 
     logger.info('Getting user primary wallet', { userId }, 'WALLET');
+    console.log('🔍 [Primary Wallet] Route hit with userId:', userId);
 
     // Get primary wallet from user_wallets table
     const { data: primaryWallet, error: walletError } = await supabase
@@ -956,6 +1088,7 @@ app.get('/api/users/:userId/primary-wallet',
     }
 
     if (!primaryWallet) {
+      console.log('🔍 [Primary Wallet] No primary wallet found for user:', userId);
       // No primary wallet - check if there's any wallet
       const { data: anyWallet } = await supabase
         .from('user_wallets')
@@ -965,6 +1098,7 @@ app.get('/api/users/:userId/primary-wallet',
         .maybeSingle();
 
       if (anyWallet) {
+        console.log('🔍 [Primary Wallet] Found wallet, setting as primary:', anyWallet.id);
         // Set this as primary
         await supabase
           .from('user_wallets')
@@ -988,6 +1122,7 @@ app.get('/api/users/:userId/primary-wallet',
         });
       }
 
+      console.log('🔍 [Primary Wallet] No wallets found for user:', userId);
       // No wallets at all
       return res.json({
         success: true,
@@ -995,6 +1130,7 @@ app.get('/api/users/:userId/primary-wallet',
       });
     }
 
+    console.log('🔍 [Primary Wallet] Found primary wallet:', primaryWallet.id);
     // Sync primary wallet to user profile if not already
     const { data: currentUser } = await supabase
       .from('users')
@@ -1004,6 +1140,7 @@ app.get('/api/users/:userId/primary-wallet',
 
     if (currentUser && currentUser.wallet_address !== primaryWallet.wallet_address) {
       logger.info('Syncing primary wallet to user profile', { userId, wallet: primaryWallet.wallet_address }, 'WALLET');
+      console.log('🔍 [Primary Wallet] Syncing wallet to user profile:', primaryWallet.wallet_address);
       
       await supabase
         .from('users')
@@ -2209,21 +2346,14 @@ app.post('/api/payments/:id/complete', async (req: Request, res: Response) => {
         if (lease) {
           console.log('🔄 [Payment Complete] Updating user role to tenant:', lease.tenant_id);
           
-          // Transition user from prospective_tenant to tenant
-          const { data: updatedUser, error: roleError } = await supabase
-            .from('users')
-            .update({
-              role: 'tenant',
-              user_type: 'tenant'
-            })
-            .eq('id', lease.tenant_id)
-            .select('*')
-            .single();
-
-          if (roleError) {
-            console.error('❌ [Payment Complete] Error updating user role:', roleError);
-          } else {
-            console.log('✅ [Payment Complete] User role updated to tenant!', updatedUser);
+          if (lease?.tenant_id) {
+            // Use unified function to transition user to tenant
+            const transitionResult = await transitionUserToTenant(supabase, lease.tenant_id);
+            if (!transitionResult.success) {
+              console.error('❌ [ArcPayment] Error updating user role:', transitionResult.error);
+            } else {
+              console.log('✅ [ArcPayment] User promoted to tenant status!', transitionResult.message);
+            }
           }
         }
       }

@@ -63,6 +63,37 @@ const LeaseReviewPage: React.FC = () => {
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
   const [specialTerms, setSpecialTerms] = useState('');
+  const [managerWallet, setManagerWallet] = useState<{address: string; id: string; type: string} | null>(null);
+
+  // Fetch manager's wallet from database on mount
+  useEffect(() => {
+    const fetchManagerWallet = async () => {
+      if (!userProfile?.id) return;
+      
+      try {
+        console.log('🔍 [LeaseReviewPage] Fetching manager wallet from database...');
+        const response = await axios.get(`${API_URL}/api/users/${userProfile.id}/primary-wallet`);
+        
+        if (response.data.success && response.data.data) {
+          const walletData = response.data.data;
+          setManagerWallet({
+            address: walletData.wallet_address,
+            id: walletData.circle_wallet_id,
+            type: walletData.wallet_type
+          });
+          console.log('✅ [LeaseReviewPage] Manager wallet loaded:', walletData.wallet_address);
+        } else {
+          console.log('⚠️ [LeaseReviewPage] No wallet found for manager');
+          setManagerWallet(null);
+        }
+      } catch (err) {
+        console.error('❌ [LeaseReviewPage] Error fetching wallet:', err);
+        setManagerWallet(null);
+      }
+    };
+
+    fetchManagerWallet();
+  }, [userProfile?.id]);
 
   useEffect(() => {
     if (!user) {
@@ -75,6 +106,15 @@ const LeaseReviewPage: React.FC = () => {
       navigate('/');
       return;
     }
+
+    // Debug: Log user profile wallet info
+    console.log('🔍 [LeaseReviewPage] User Profile:', {
+      wallet_address: userProfile?.wallet_address,
+      circle_wallet_id: userProfile?.circle_wallet_id,
+      isConnected,
+      walletAddress,
+      walletId
+    });
 
     // Auto-load wallet from user profile if not already connected
     if (!isConnected && userProfile?.wallet_address) {
@@ -101,6 +141,14 @@ const LeaseReviewPage: React.FC = () => {
     // Use global wallet context
     connectWallet(wAddress, wId, wType);
     
+    // IMPORTANT: Update managerWallet state so UI reflects the new wallet
+    setManagerWallet({
+      address: wAddress,
+      id: wId,
+      type: wType
+    });
+    console.log('✅ [LeaseReviewPage] Manager wallet updated:', wAddress);
+    
     // Show appropriate message based on wallet type
     if (wType === 'circle') {
       setSuccess(`Circle wallet connected! Address: ${wAddress.substring(0, 8)}...${wAddress.substring(wAddress.length - 6)}`);
@@ -113,14 +161,14 @@ const LeaseReviewPage: React.FC = () => {
   const signLeaseAsManager = async () => {
     if (!lease) return;
 
-    // Use wallet from user profile (already set globally)
-    const managerWalletAddress = walletAddress || userProfile?.wallet_address;
-    const managerWalletId = walletId || userProfile?.circle_wallet_id;
-    const managerWalletType = walletType || (userProfile?.circle_wallet_id ? 'circle' : 'external');
+    // Use wallet from managerWallet state (fetched directly from database)
+    const managerWalletAddress = managerWallet?.address || walletAddress || userProfile?.wallet_address;
+    const managerWalletId = managerWallet?.id || walletId || userProfile?.circle_wallet_id;
+    const managerWalletType = managerWallet?.type || walletType || (userProfile?.circle_wallet_id ? 'circle' : 'external');
     
-    // Validate we have a wallet address from profile
+    // Validate we have a wallet address
     if (!managerWalletAddress) {
-      setError('No wallet address found in your profile. Please set up your wallet in account settings first.');
+      setError('No wallet address found. Please set up your wallet in the Wallet section first.');
       return;
     }
 
@@ -128,64 +176,31 @@ const LeaseReviewPage: React.FC = () => {
       setSigning(true);
       setError('');
 
-      console.log('📝 [Smart Contract Signing] Initiating on-chain signature...');
+      console.log('📝 [Lease Signing] Signing lease (database only - no blockchain)...');
+      console.log('   Wallet Address:', managerWalletAddress);
+      console.log('   Wallet ID:', managerWalletId);
       console.log('   Wallet Type:', managerWalletType);
-      console.log('   Address:', managerWalletAddress);
       console.log('   Lease ID:', lease.id);
-      console.log('   Source: User Profile');
 
-      // Import the smart contract signing service
-      const smartContractSigningService = await import('../services/smartContractSigningService');
-      
-      // Prepare lease info for smart contract
-      const leaseInfo = {
-        leaseId: lease.id,
-        landlord: managerWalletAddress, // Manager is the landlord
-        tenant: lease.tenant?.wallet_address || '0x0000000000000000000000000000000000000000',
-        leaseDocumentHash: `lease-${lease.id}`, // Use lease ID as document hash
-        monthlyRent: lease.monthly_rent_usdc,
-        securityDeposit: lease.security_deposit_usdc,
-        isLandlord: true
-      };
+      // Generate a database-only signature (no blockchain)
+      const mockSignature = `MANAGER_SIG_${Date.now()}_${Math.random().toString(36).substring(7)}`;
 
-      // Sign lease on smart contract (works for both Circle and external wallets)
-      const result = await smartContractSigningService.signLeaseOnChain(
-        {
-          address: managerWalletAddress,
-          walletType: managerWalletType,
-          circleWalletId: managerWalletId || undefined
-        },
-        leaseInfo
-      );
-
-      if (!result.success) {
-        const errorMessage = typeof result.error === 'string' 
-          ? result.error 
-          : (result.error as any)?.message || 'Failed to sign lease on-chain';
-        setError(errorMessage);
-        setSigning(false);
-        return;
-      }
-
-      console.log('✅ [Smart Contract] Transaction confirmed:', result.transactionHash);
-      console.log('   Explorer:', `https://testnet.arcscan.app/tx/${result.transactionHash}`);
-
-      // Update lease in database with transaction hash
+      // Update lease in database with signature
       const response = await axios.post(`${API_URL}/api/leases/${lease.id}/sign`, {
         signer_id: userProfile!.id,
-        signature: result.transactionHash, // Store tx hash instead of signature
+        signature: mockSignature,
         signer_type: 'landlord',
         wallet_address: managerWalletAddress,
         wallet_type: managerWalletType,
         wallet_id: managerWalletId || null,
-        blockchain_tx_hash: result.transactionHash
+        blockchain_tx_hash: null // No blockchain transaction
       });
 
       if (response.data.success) {
         setSuccess(
           response.data.data.lease_status === 'fully_signed'
-            ? `✅ Lease signed on-chain! Transaction: ${result.transactionHash?.substring(0, 10)}...`
-            : `✅ Lease signed successfully! Waiting for tenant signature.`
+            ? '✅ Lease signed successfully! Both parties have signed.'
+            : '✅ Lease signed successfully! Waiting for tenant signature.'
         );
 
         setLease(response.data.data);
@@ -194,13 +209,22 @@ const LeaseReviewPage: React.FC = () => {
           fetchLease(); // Refresh to show updated status
         }, 3000);
       }
-    } catch (err) {
-      console.error('❌ [Smart Contract] Error:', err);
-      const errorMessage = err instanceof Error 
-        ? err.message 
-        : typeof err === 'string' 
-        ? err 
-        : 'Failed to sign lease. Please try again.';
+    } catch (err: any) {
+      console.error('❌ [Lease Signing] Error:', err);
+      
+      // Extract error message safely
+      let errorMessage = 'Failed to sign lease. Please try again.';
+      
+      if (err.response?.data?.error) {
+        errorMessage = typeof err.response.data.error === 'string' 
+          ? err.response.data.error 
+          : JSON.stringify(err.response.data.error);
+      } else if (err.message) {
+        errorMessage = err.message;
+      } else if (typeof err === 'string') {
+        errorMessage = err;
+      }
+      
       setError(errorMessage);
     } finally {
       setSigning(false);
@@ -481,9 +505,9 @@ const LeaseReviewPage: React.FC = () => {
               )}
               {!lease.landlord_signature && !editing && (
                 <>
-                  {/* Wallet Info - From User Profile */}
+                  {/* Wallet Info - From Database */}
                   <div className="bg-white rounded-lg p-6 shadow-sm border-2 border-gray-200">
-                    {(walletAddress || userProfile?.wallet_address) ? (
+                    {managerWallet?.address ? (
                       <div className="space-y-3">
                         <div className="bg-gradient-to-br from-blue-50 to-indigo-50 border-2 border-blue-300 rounded-xl p-5">
                           <div className="flex items-center gap-3">
@@ -491,10 +515,9 @@ const LeaseReviewPage: React.FC = () => {
                               <Wallet className="w-6 h-6 text-blue-600" />
                             </div>
                             <div className="flex-1">
-                              <p className="text-sm font-semibold text-blue-900">Your Wallet (From Profile)</p>
+                              <p className="text-sm font-semibold text-blue-900">Your Wallet (From Database)</p>
                               <p className="text-sm font-mono text-blue-900">
-                                {(walletAddress || userProfile?.wallet_address || '').substring(0, 8)}...
-                                {(walletAddress || userProfile?.wallet_address || '').substring((walletAddress || userProfile?.wallet_address || '').length - 6)}
+                                {managerWallet.address.substring(0, 8)}...{managerWallet.address.substring(managerWallet.address.length - 6)}
                               </p>
                               <p className="text-xs text-green-600 mt-1 font-medium">✅ Ready to sign & receive payments</p>
                             </div>
@@ -691,20 +714,20 @@ const LeaseReviewPage: React.FC = () => {
               </div>
             </div>
           ) : (
-            <div className="bg-yellow-50 border-2 border-yellow-200 rounded-lg p-4 mt-4">
+            <div className="bg-blue-50 border-2 border-blue-200 rounded-lg p-4 mt-4">
               <div className="flex items-start gap-3">
                 <span className="text-2xl">📝</span>
                 <div>
-                  <p className="text-sm font-semibold text-yellow-900">Awaiting Digital Signatures</p>
-                  <p className="text-xs text-yellow-700 mt-1">
-                    This lease will be stored on the Arc blockchain for immutability once both parties complete the digital signing process.
+                  <p className="text-sm font-semibold text-blue-900">Awaiting Digital Signatures</p>
+                  <p className="text-xs text-blue-700 mt-1">
+                    This lease will be saved to the database once both parties complete the digital signing process.
                   </p>
                   <div className="mt-2 space-y-1">
                     {!(lease.landlord_signed_at || lease.landlord_signature_date) && (
-                      <p className="text-xs text-yellow-800">• Landlord signature pending</p>
+                      <p className="text-xs text-blue-800">• Landlord signature pending</p>
                     )}
                     {!(lease.tenant_signed_at || lease.tenant_signature_date) && (
-                      <p className="text-xs text-yellow-800">• Tenant signature pending</p>
+                      <p className="text-xs text-blue-800">• Tenant signature pending</p>
                     )}
                   </div>
                 </div>

@@ -60,6 +60,13 @@ CREATE TABLE IF NOT EXISTS leases (
     last_payment_date TIMESTAMP WITH TIME ZONE,
     lease_terms JSONB,
     blockchain_status TEXT DEFAULT 'off-chain',
+    -- Wallet information for payments (supports all wallet types)
+    manager_wallet_address TEXT,
+    manager_wallet_type TEXT CHECK (manager_wallet_type IN ('phantom', 'circle', 'metamask', 'external')),
+    manager_wallet_id TEXT,
+    tenant_wallet_address TEXT,
+    tenant_wallet_type TEXT CHECK (tenant_wallet_type IN ('phantom', 'circle', 'metamask', 'external')),
+    tenant_wallet_id TEXT,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
