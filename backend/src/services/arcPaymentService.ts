@@ -44,7 +44,7 @@ class ArcPaymentService {
 
   constructor() {
     const apiKey = process.env.CIRCLE_API_KEY || '';
-    const entitySecret = process.env.ENTITY_SECRET_RAW || '';
+    const entitySecret = process.env.ENTITY_SECRET_RAW || process.env.ENTITY_SECRET || '';
 
     // Validate entity secret (must be 64 hex characters)
     if (entitySecret && !/^[0-9a-f]{64}$/i.test(entitySecret)) {
