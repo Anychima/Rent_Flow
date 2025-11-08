@@ -37,7 +37,7 @@ interface AuthContextType {
   signIn: (email: string, password: string) => Promise<{ error?: any }>;
   signUp: (email: string, password: string, fullName: string, role?: string, walletAddress?: string) => Promise<{ error?: any }>;
   signOut: () => Promise<void>;
-  refreshUserProfile: () => Promise<void>; // NEW: Force refresh user profile
+  refreshUserProfile: (timeoutMs?: number, maxRetries?: number) => Promise<void>; // NEW: Force refresh user profile with configurable timeout
   supabase: typeof supabase;
 }
 
@@ -55,7 +55,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const isFetchingProfile = useRef<boolean>(false);
 
   // Fetch user profile from database with loop prevention, retry logic, and timeout
-  const fetchUserProfile = async (userId: string, retryCount = 0): Promise<UserProfile | null> => {
+  const fetchUserProfile = async (userId: string, retryCount = 0, timeoutMs = 10000): Promise<UserProfile | null> => {
     // Prevent concurrent fetches for the same user
     if (isFetchingProfile.current && lastFetchedUserId.current === userId) {
       console.log('[AuthContext] Fetch already in progress for this user');
@@ -68,12 +68,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       
       console.log(`[AuthContext] Fetching profile for user: ${userId} (attempt ${retryCount + 1})`);
       
-      // Add 10-second timeout to prevent indefinite hanging
+      // Add timeout to prevent indefinite hanging (configurable, default 10s)
       const controller = new AbortController();
       const timeoutId = setTimeout(() => {
         controller.abort();
-        console.error('[AuthContext] Profile fetch timed out after 10 seconds');
-      }, 10000);
+        console.error(`[AuthContext] Profile fetch timed out after ${timeoutMs}ms`);
+      }, timeoutMs);
       
       try {
         // Try direct ID lookup first - use maybeSingle to avoid throwing on 0 rows
@@ -520,12 +520,32 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   // Force refresh user profile (useful after role changes)
-  const refreshUserProfile = async () => {
+  const refreshUserProfile = async (timeoutMs = 10000, maxRetries = 3) => {
     if (!user?.id) return;
     
-    const profile = await fetchUserProfile(user.id);
+    // Retry logic for role transitions (e.g., after payment completion)
+    let attempts = 0;
+    let profile = null;
+    
+    while (attempts < maxRetries && !profile) {
+      attempts++;
+      console.log(`[AuthContext] Refreshing user profile (attempt ${attempts}/${maxRetries})...`);
+      
+      profile = await fetchUserProfile(user.id, 0, timeoutMs);
+      
+      if (!profile && attempts < maxRetries) {
+        // Wait before retry (exponential backoff: 2s, 4s)
+        const delay = Math.pow(2, attempts) * 1000;
+        console.log(`[AuthContext] Profile refresh failed, retrying in ${delay}ms...`);
+        await new Promise(resolve => setTimeout(resolve, delay));
+      }
+    }
+    
     if (profile) {
+      console.log(`✅ [AuthContext] Profile refreshed successfully after ${attempts} attempt(s), Role: ${profile.role}`);
       setUserProfile(profile);
+    } else {
+      console.error(`❌ [AuthContext] Failed to refresh profile after ${maxRetries} attempts`);
     }
   };
 

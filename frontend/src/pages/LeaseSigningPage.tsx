@@ -552,13 +552,16 @@ const LeaseSigningPage: React.FC = () => {
                 onPaymentComplete={async () => {
                   console.log('🎉 [Payment Complete] All payments finished, refreshing user profile...');
                   
-                  // Force refresh to get updated tenant role
-                  await refreshUserProfile();
+                  // Force refresh with extended timeout (30s) and retries for role transition
+                  // After payment, user role changes from prospective_tenant -> tenant
+                  // This can take longer than normal profile fetches
+                  await refreshUserProfile(30000, 5); // 30s timeout, 5 retries
                   
                   // Redirect to dashboard after brief delay
                   setTimeout(() => {
+                    console.log('🚀 [Redirect] Redirecting to tenant dashboard...');
                     window.location.href = '/';
-                  }, 3000);
+                  }, 2000);
                 }}
               />
             </div>
