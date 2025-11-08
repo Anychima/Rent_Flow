@@ -281,14 +281,15 @@ const LeaseSigningPage: React.FC = () => {
       
       console.log('💾 [Database] Saving signature to database...');
 
-      // Update lease in database - wallet info is optional for signing
+      // Update lease in database - DON'T send wallet info for tenant signing
+      // Tenant wallet should ONLY be set when they explicitly connect wallet for payments
       const response = await axios.post(`https://rent-flow.onrender.com/api/leases/${lease.id}/sign`, {
         signer_id: userProfile!.id,
         signature: mockSignature, // Database-only signature
         signer_type: 'tenant',
-        wallet_address: arcWalletAddress || null, // Optional - only needed for payments
-        wallet_type: arcWalletType || null,
-        wallet_id: arcWalletId || null,
+        wallet_address: null, // Don't send wallet during signing - only during payment
+        wallet_type: null,
+        wallet_id: null,
         blockchain_tx_hash: null // No blockchain signing
       });
 
