@@ -187,6 +187,14 @@ export default function PaymentSection({
           feeLevel: 'MEDIUM',
           paymentId: confirmPayment.id,
           leaseId: leaseId
+        },
+        {
+          headers: {
+            'Content-Type': 'application/json',
+            'Accept': 'application/json'
+          },
+          // Prevent browser caching or redirects
+          maxRedirects: 0
         }
       );
 
