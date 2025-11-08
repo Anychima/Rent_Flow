@@ -28,6 +28,9 @@ interface Lease {
   generated_at: string;
   property?: any;
   tenant?: any;
+  manager_wallet_address?: string;
+  tenant_wallet_address?: string;
+  landlord_wallet?: string;
 }
 
 const LeaseSigningPage: React.FC = () => {
@@ -507,7 +510,7 @@ const LeaseSigningPage: React.FC = () => {
                     <div className="grid grid-cols-2 gap-4">
                       <div>
                         <p className="text-xs font-medium text-gray-600 mb-1">
-                          Arc Wallet Address
+                          Your Arc Wallet (Tenant)
                         </p>
                         <p className="font-mono text-sm text-gray-900">
                           {arcWalletAddress.substring(0, 12)}...{arcWalletAddress.substring(arcWalletAddress.length - 8)}
@@ -520,6 +523,16 @@ const LeaseSigningPage: React.FC = () => {
                         </p>
                       </div>
                     </div>
+                    {lease.manager_wallet_address && (
+                      <div className="mt-3 pt-3 border-t border-blue-200">
+                        <p className="text-xs font-medium text-gray-600 mb-1">
+                          Payment Recipient (Manager)
+                        </p>
+                        <p className="font-mono text-sm text-gray-700">
+                          {lease.manager_wallet_address.substring(0, 12)}...{lease.manager_wallet_address.substring(lease.manager_wallet_address.length - 8)}
+                        </p>
+                      </div>
+                    )}
                   </div>
                 )}
               </div>
