@@ -1796,8 +1796,7 @@ function Dashboard() {
 
         {activeTab === 'wallet' && user && (
           <WalletManagement 
-            userId={user.id} 
-            userEmail={user.email || ''}
+            userId={user.id}
           />
         )}
       </main>

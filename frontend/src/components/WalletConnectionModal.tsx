@@ -6,14 +6,14 @@ const API_URL = process.env.REACT_APP_BACKEND_URL || 'https://rent-flow.onrender
 
 interface WalletConnectionModalProps {
   userId: string;
-  userEmail: string;
+  // userEmail: string; // DISABLED: Only needed for wallet creation
   onClose: () => void;
   onWalletConnected: (walletId: string, walletAddress: string) => void;
 }
 
 export default function WalletConnectionModal({
   userId,
-  userEmail,
+  // userEmail, // DISABLED: Only needed for wallet creation
   onClose,
   onWalletConnected
 }: WalletConnectionModalProps) {
@@ -57,7 +57,7 @@ export default function WalletConnectionModal({
 
 Address: ${walletAddress.substring(0, 20)}...
 
-✨ You can now sign leases with MetaMask!`);
+✨ This wallet is now available in your Wallet tab!\n✨ You can now sign leases with MetaMask!`);
         
         // Save to localStorage
         const walletInfo = {
@@ -68,6 +68,9 @@ Address: ${walletAddress.substring(0, 20)}...
         };
         localStorage.setItem('rentflow_wallet', JSON.stringify(walletInfo));
         console.log('💾 [Wallet Modal] MetaMask saved to localStorage:', walletInfo);
+        
+        // Dispatch event to notify other components
+        window.dispatchEvent(new CustomEvent('walletConnected'));
         
         onWalletConnected('', walletAddress);
         onClose();
@@ -86,42 +89,65 @@ Address: ${walletAddress.substring(0, 20)}...
     }
   };
 
-  const handleCreateNewWallet = async () => {
-    setLoading(true);
-    setError('');
+  // DISABLED: Creates wallets in developer's Circle account
+  // const handleCreateNewWallet = async () => {
+  //   setLoading(true);
+  //   setError('');
 
-    try {
-      console.log('🌐 [Wallet] Creating new Arc wallet for user...');
-      
-      const response = await axios.post(`${API_URL}/api/arc/wallet/create`, {
-        userId,
-        userEmail
-      });
+  //   try {
+  //     console.log('🌐 [Wallet] Creating new Arc wallet for user...');
+  //     
+  //     const response = await axios.post(`${API_URL}/api/arc/wallet/create`, {
+  //       userId,
+  //       userEmail
+  //     });
 
-      if (response.data.success) {
-        const { walletId, address } = response.data.data;
-        console.log('✅ [Wallet] New wallet created:', { walletId, address });
-        
-        // Save to user_wallets table
-        await axios.post(`${API_URL}/api/users/${userId}/wallets`, {
-          walletAddress: address,
-          walletType: 'circle',
-          circleWalletId: walletId
-        });
-        
-        alert(`✅ Arc Wallet Created!\n\nYour new wallet address:\n${address.substring(0, 20)}...`);
-        onWalletConnected(walletId, address);
-        onClose();
-      } else {
-        setError(response.data.error || 'Failed to create wallet');
-      }
-    } catch (err: any) {
-      console.error('❌ [Wallet] Error creating wallet:', err);
-      setError(err.response?.data?.error || 'Failed to create wallet. Please try again.');
-    } finally {
-      setLoading(false);
-    }
-  };
+  //     if (response.data.success) {
+  //       const { walletId, address } = response.data.data;
+  //       console.log('✅ [Wallet] New wallet created:', { walletId, address });
+  //       
+  //       // Save to user_wallets table
+  //       const saveResponse = await axios.post(`${API_URL}/api/users/${userId}/wallets`, {
+  //         walletAddress: address,
+  //         walletType: 'circle',
+  //         circleWalletId: walletId
+  //       });
+  //       
+  //       if (saveResponse.data.success) {
+  //         console.log('✅ [Wallet] Wallet saved to user_wallets table');
+  //         
+  //         // Save to localStorage for immediate availability
+  //         const walletInfo = {
+  //           address: address,
+  //           walletId: walletId,
+  //           type: 'circle',
+  //           connectedAt: new Date().toISOString()
+  //         };
+  //         localStorage.setItem('rentflow_wallet', JSON.stringify(walletInfo));
+  //         console.log('💾 [Wallet Modal] New wallet saved to localStorage:', walletInfo);
+  //         
+  //         // Dispatch event to notify other components
+  //         window.dispatchEvent(new CustomEvent('walletConnected'));
+  //       }
+  //       
+  //       alert(`✅ Arc Wallet Created!
+
+// Your new wallet address:
+// ${address.substring(0, 20)}...
+
+// ✨ This wallet is now available in your Wallet tab!`);
+  //       onWalletConnected(walletId, address);
+  //       onClose();
+  //     } else {
+  //       setError(response.data.error || 'Failed to create wallet');
+  //     }
+  //   } catch (err: any) {
+  //     console.error('❌ [Wallet] Error creating wallet:', err);
+  //     setError(err.response?.data?.error || 'Failed to create wallet. Please try again.');
+  //   } finally {
+  //     setLoading(false);
+  //   }
+  // };
 
   const handleConnectExistingWallet = async () => {
     setLoading(true);
@@ -168,7 +194,7 @@ Wallet ID: ${walletId}
 Address: ${address.substring(0, 20)}...
 Source: ${source}
 
-✨ This wallet can sign leases!`);
+✨ This wallet is now available in your Wallet tab!\n✨ This wallet can sign leases!`);
           
           // Save to localStorage for app-wide persistence
           const walletInfo = {
@@ -179,6 +205,9 @@ Source: ${source}
           };
           localStorage.setItem('rentflow_wallet', JSON.stringify(walletInfo));
           console.log('💾 [Wallet Modal] Saved to localStorage:', walletInfo);
+          
+          // Dispatch event to notify other components
+          window.dispatchEvent(new CustomEvent('walletConnected'));
           
           onWalletConnected(walletId, address);
           onClose();
@@ -219,6 +248,8 @@ Source: ${source}
           console.log('✅ [Wallet] External wallet connected');
           alert(`✅ Wallet Connected as External!
 
+✨ This wallet is now available in your Wallet tab!
+
 ✨ This wallet can:
 - ✅ Sign leases (via MetaMask/wallet popup)
 - ✅ Receive payments
@@ -236,6 +267,9 @@ You're all set to sign leases and receive payments!`);
           };
           localStorage.setItem('rentflow_wallet', JSON.stringify(walletInfo));
           console.log('💾 [Wallet Modal] Saved to localStorage:', walletInfo);
+          
+          // Dispatch event to notify other components
+          window.dispatchEvent(new CustomEvent('walletConnected'));
           
           onWalletConnected('', existingWalletAddress);
           onClose();
@@ -280,7 +314,7 @@ You're all set to sign leases and receive payments!`);
 Wallet ID: ${walletId}
 Address: ${address.substring(0, 20)}...
 
-✨ This wallet can sign leases!`);
+✨ This wallet is now available in your Wallet tab!\n✨ This wallet can sign leases!`);
         
         // Save to localStorage for app-wide persistence
         const walletInfo = {
@@ -291,6 +325,9 @@ Address: ${address.substring(0, 20)}...
         };
         localStorage.setItem('rentflow_wallet', JSON.stringify(walletInfo));
         console.log('💾 [Wallet Modal] Saved to localStorage:', walletInfo);
+        
+        // Dispatch event to notify other components
+        window.dispatchEvent(new CustomEvent('walletConnected'));
         
         onWalletConnected(walletId, address);
         onClose();
@@ -332,11 +369,11 @@ Address: ${address.substring(0, 20)}...
           {mode === 'select' && (
             <div className="space-y-4">
               <p className="text-gray-600 text-sm mb-6">
-                You need an Arc wallet to make payments. You can create a new one or connect an existing Arc wallet.
+                Connect your existing Arc wallet. You must have your own wallet to make payments and sign leases.
               </p>
 
-              {/* Option 1: Create New Wallet */}
-              <button
+              {/* DISABLED: Option 1: Create New Wallet - Creates wallets in developer's account */}
+              {/* <button
                 onClick={() => setMode('create')}
                 className="w-full p-5 border-2 border-blue-200 rounded-xl hover:border-blue-400 hover:bg-blue-50 transition-all text-left group"
               >
@@ -359,7 +396,7 @@ Address: ${address.substring(0, 20)}...
                   </div>
                   <ArrowRight className="w-5 h-5 text-gray-400 group-hover:text-blue-600 transition-colors flex-shrink-0 mt-2" />
                 </div>
-              </button>
+              </button> */}
 
               {/* Option 2: Connect Existing Circle Wallet by ID */}
               <button
@@ -450,7 +487,8 @@ Address: ${address.substring(0, 20)}...
             </div>
           )}
 
-          {mode === 'create' && (
+          {/* DISABLED: Create wallet mode - Creates wallets in developer's account */}
+          {/* {mode === 'create' && (
             <div className="space-y-4">
               <button
                 onClick={() => setMode('select')}
@@ -519,7 +557,7 @@ Address: ${address.substring(0, 20)}...
                 </button>
               </div>
             </div>
-          )}
+          )} */}
 
           {mode === 'connect-id' && (
             <div className="space-y-4">

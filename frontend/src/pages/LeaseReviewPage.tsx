@@ -352,15 +352,13 @@ const LeaseReviewPage: React.FC = () => {
   const handleSendToTenant = async () => {
     if (!lease) return;
 
-    // Check if landlord has signed
+    // REQUIRED: Landlord must sign before sending
     if (!lease.landlord_signature) {
-      setError('Please sign the lease before sending to tenant');
+      setError('You must sign the lease before sending it to the tenant');
       return;
     }
 
-    const confirmMessage = lease.landlord_signature 
-      ? 'Send this signed lease to the tenant? They will be able to review and sign it.'
-      : 'Send this unsigned lease to the tenant for review?';
+    const confirmMessage = 'Send this signed lease to the tenant? They will be able to review and sign it.';
 
     if (!window.confirm(confirmMessage)) {
       return;
@@ -564,10 +562,12 @@ const LeaseReviewPage: React.FC = () => {
                   </div>
 
                   {/* Send to Tenant Button - Show when NOT signed OR when signed but not sent */}
-                  {(!lease.landlord_signature || (lease.landlord_signature && lease.lease_status === 'draft')) && (
+                  {/* DISABLED: Send unsigned lease - Manager must sign first */}
+                  {/* Send Signed Lease Button - Only shown after manager signs */}
+                  {(!lease.landlord_signature || (lease.landlord_signature && lease.lease_status === 'draft')) && lease.landlord_signature && (
                     <button
                       onClick={handleSendToTenant}
-                      disabled={sending || !lease.landlord_signature}
+                      disabled={sending}
                       className="flex items-center gap-2 px-6 py-3 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors font-medium disabled:opacity-50 disabled:cursor-not-allowed"
                     >
                       {sending ? (
@@ -575,15 +575,10 @@ const LeaseReviewPage: React.FC = () => {
                           <Loader className="w-4 h-4 animate-spin" />
                           Sending...
                         </>
-                      ) : lease.landlord_signature ? (
-                        <>
-                          <Send className="w-4 h-4" />
-                          Send Signed Lease to Tenant
-                        </>
                       ) : (
                         <>
                           <Send className="w-4 h-4" />
-                          Send to Tenant (Unsigned)
+                          Send Signed Lease to Tenant
                         </>
                       )}
                     </button>
@@ -822,7 +817,6 @@ const LeaseReviewPage: React.FC = () => {
       {showWalletModal && userProfile && (
         <WalletConnectionModal
           userId={userProfile.id}
-          userEmail={userProfile.email || ''}
           onClose={() => setShowWalletModal(false)}
           onWalletConnected={handleWalletConnected}
         />

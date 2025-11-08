@@ -59,65 +59,68 @@ const LeaseSigningPage: React.FC = () => {
 
     fetchLease();
     
-    // Also fetch and sync wallet on page load
-    syncWalletFromBackend();
+    // DISABLED: Don't auto-sync wallet for tenant
+    // Tenant must explicitly connect their own wallet to make payments
+    // syncWalletFromBackend();
   }, [id, user]);
 
-  // Fetch wallet directly from backend and sync to context
-  const syncWalletFromBackend = async () => {
-    // Skip if wallet is already loaded in context
-    if (contextIsConnected && contextWalletAddress && contextWalletId) {
-      console.log('✅ [Wallet Sync] Wallet already loaded from context:', contextWalletAddress);
-      return;
-    }
-    
-    // Skip if userProfile has wallet and it's already in context
-    if (userProfile?.wallet_address && contextWalletAddress === userProfile.wallet_address) {
-      console.log('✅ [Wallet Sync] Wallet already synced from userProfile');
-      return;
-    }
-    
-    if (!userProfile?.id) {
-      console.log('⏳ [Wallet Sync] Waiting for userProfile to load...');
-      return;
-    }
-    
-    try {
-      console.log('🔄 [Wallet Sync] Fetching wallet from backend for user:', userProfile.id);
-      const API_URL = process.env.REACT_APP_BACKEND_URL || 'http://localhost:3001';
-      const response = await axios.get(`${API_URL}/api/users/${userProfile.id}/primary-wallet`);
-      
-      if (response.data.success && response.data.data) {
-        const wallet = response.data.data;
-        console.log('✅ [Wallet Sync] Found wallet in backend:', wallet.wallet_address);
-        
-        // Sync to context
-        saveToContext(
-          wallet.wallet_address,
-          wallet.circle_wallet_id || '',
-          wallet.wallet_type || 'circle'
-        );
-        
-        console.log('✅ [Wallet Sync] Wallet synced to context successfully');
-      } else {
-        console.log('ℹ️ [Wallet Sync] No wallet found in backend');
-      }
-    } catch (err) {
-      console.error('❌ [Wallet Sync] Error fetching wallet from backend:', err);
-    }
-  };
+  // DISABLED: Don't auto-sync wallet from backend for tenants
+  // Tenants must explicitly connect their own wallet
+  // const syncWalletFromBackend = async () => {
+  //   // Skip if wallet is already loaded in context
+  //   if (contextIsConnected && contextWalletAddress && contextWalletId) {
+  //     console.log('✅ [Wallet Sync] Wallet already loaded from context:', contextWalletAddress);
+  //     return;
+  //   }
+  //   
+  //   // Skip if userProfile has wallet and it's already in context
+  //   if (userProfile?.wallet_address && contextWalletAddress === userProfile.wallet_address) {
+  //     console.log('✅ [Wallet Sync] Wallet already synced from userProfile');
+  //     return;
+  //   }
+  //   
+  //   if (!userProfile?.id) {
+  //     console.log('⏳ [Wallet Sync] Waiting for userProfile to load...');
+  //     return;
+  //   }
+  //   
+  //   try {
+  //     console.log('🔄 [Wallet Sync] Fetching wallet from backend for user:', userProfile.id);
+  //     const API_URL = process.env.REACT_APP_BACKEND_URL || 'http://localhost:3001';
+  //     const response = await axios.get(`${API_URL}/api/users/${userProfile.id}/primary-wallet`);
+  //     
+  //     if (response.data.success && response.data.data) {
+  //       const wallet = response.data.data;
+  //       console.log('✅ [Wallet Sync] Found wallet in backend:', wallet.wallet_address);
+  //       
+  //       // Sync to context
+  //       saveToContext(
+  //         wallet.wallet_address,
+  //         wallet.circle_wallet_id || '',
+  //         wallet.wallet_type || 'circle'
+  //       );
+  //       
+  //       console.log('✅ [Wallet Sync] Wallet synced to context successfully');
+  //     } else {
+  //       console.log('ℹ️ [Wallet Sync] No wallet found in backend');
+  //     }
+  //   } catch (err) {
+  //     console.error('❌ [Wallet Sync] Error fetching wallet from backend:', err);
+  //   }
+  // };
 
-  // Also sync when userProfile changes (e.g., after refreshUserProfile is called)
-  useEffect(() => {
-    if (userProfile?.wallet_address && !contextWalletAddress) {
-      console.log('🔄 [Wallet Recovery] Loading wallet from userProfile:', userProfile.wallet_address);
-      saveToContext(
-        userProfile.wallet_address,
-        userProfile.circle_wallet_id || '',
-        userProfile.circle_wallet_id ? 'circle' : 'external'
-      );
-    }
-  }, [userProfile?.wallet_address, userProfile?.circle_wallet_id]);
+  // DISABLED: Don't auto-sync wallet from userProfile for tenants
+  // Tenants must explicitly connect their own wallet
+  // useEffect(() => {
+  //   if (userProfile?.wallet_address && !contextWalletAddress) {
+  //     console.log('🔄 [Wallet Recovery] Loading wallet from userProfile:', userProfile.wallet_address);
+  //     saveToContext(
+  //       userProfile.wallet_address,
+  //       userProfile.circle_wallet_id || '',
+  //       userProfile.circle_wallet_id ? 'circle' : 'external'
+  //     );
+  //   }
+  // }, [userProfile?.wallet_address, userProfile?.circle_wallet_id]);
 
   // Debug: Log wallet connection state
   useEffect(() => {
@@ -579,7 +582,6 @@ const LeaseSigningPage: React.FC = () => {
       {showWalletModal && userProfile && (
         <WalletConnectionModal
           userId={userProfile.id}
-          userEmail={userProfile.email}
           onClose={() => setShowWalletModal(false)}
           onWalletConnected={handleWalletConnected}
         />

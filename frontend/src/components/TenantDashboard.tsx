@@ -1061,8 +1061,7 @@ Your payment is being processed.`);
 
         {activeTab === 'wallet' && userProfile && (
           <WalletManagement 
-            userId={userProfile.id} 
-            userEmail={userProfile.email || ''}
+            userId={userProfile.id}
           />
         )}
       </div>

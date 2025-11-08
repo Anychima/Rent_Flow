@@ -17,10 +17,10 @@ interface WalletItem {
 
 interface WalletManagementProps {
   userId: string;
-  userEmail: string;
+  // userEmail: string; // DISABLED: Not needed after removing wallet creation
 }
 
-export default function WalletManagement({ userId, userEmail }: WalletManagementProps) {
+export default function WalletManagement({ userId }: WalletManagementProps) {
   const [wallets, setWallets] = useState<WalletItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [showAddModal, setShowAddModal] = useState(false);
@@ -29,6 +29,18 @@ export default function WalletManagement({ userId, userEmail }: WalletManagement
 
   useEffect(() => {
     fetchWallets();
+    
+    // Listen for wallet connection events from other parts of the app
+    const handleWalletConnectedEvent = () => {
+      console.log('🔄 [WalletManagement] Wallet connected event received, refreshing wallets...');
+      fetchWallets();
+    };
+    
+    window.addEventListener('walletConnected', handleWalletConnectedEvent);
+    
+    return () => {
+      window.removeEventListener('walletConnected', handleWalletConnectedEvent);
+    };
   }, [userId]);
 
   const fetchWallets = async () => {
@@ -52,6 +64,9 @@ export default function WalletManagement({ userId, userEmail }: WalletManagement
     setSuccess('Wallet added successfully!');
     setTimeout(() => setSuccess(''), 3000);
     await fetchWallets();
+    
+    // Dispatch event for other components that might need to know
+    window.dispatchEvent(new CustomEvent('walletConnected'));
   };
 
   const handleSetPrimary = async (walletId: string) => {
@@ -299,7 +314,6 @@ export default function WalletManagement({ userId, userEmail }: WalletManagement
       {showAddModal && (
         <WalletConnectionModal
           userId={userId}
-          userEmail={userEmail}
           onClose={() => setShowAddModal(false)}
           onWalletConnected={handleWalletAdded}
         />

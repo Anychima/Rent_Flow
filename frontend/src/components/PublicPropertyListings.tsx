@@ -953,8 +953,7 @@ const PublicPropertyListings: React.FC = () => {
 
             <div className="p-6">
               <WalletManagement 
-                userId={userProfile.id} 
-                userEmail={userProfile.email || ''}
+                userId={userProfile.id}
               />
             </div>
           </div>
