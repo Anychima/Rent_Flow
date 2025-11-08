@@ -116,18 +116,12 @@ const LeaseReviewPage: React.FC = () => {
       walletId
     });
 
-    // Auto-load wallet from user profile if not already connected
-    if (!isConnected && userProfile?.wallet_address) {
-      console.log('🔄 [Auto-Load] Loading wallet from user profile...');
-      connectWallet(
-        userProfile.wallet_address,
-        userProfile.circle_wallet_id || '',
-        userProfile.circle_wallet_id ? 'circle' : 'external'
-      );
-    }
+    // REMOVED: Auto-load from userProfile is now handled by WalletContext
+    // WalletContext automatically loads wallet from database on user change
+    // This prevents duplication and ensures consistency
 
     fetchLease();
-  }, [id, user, userProfile, isConnected]);
+  }, [id, user, userProfile]);
 
   const connectArcWallet = async () => {
     // Show wallet connection modal instead of auto-connecting
@@ -148,6 +142,9 @@ const LeaseReviewPage: React.FC = () => {
       type: wType
     });
     console.log('✅ [LeaseReviewPage] Manager wallet updated:', wAddress);
+    
+    // Dispatch event to notify other components (e.g., WalletManagement tab)
+    window.dispatchEvent(new CustomEvent('walletConnected'));
     
     // Show appropriate message based on wallet type
     if (wType === 'circle') {

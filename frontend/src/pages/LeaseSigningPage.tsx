@@ -37,7 +37,10 @@ const LeaseSigningPage: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const { user, userProfile, refreshUserProfile } = useAuth();
-  const { walletAddress: contextWalletAddress, walletId: contextWalletId, walletType: contextWalletType, isConnected: contextIsConnected, connectWallet: saveToContext } = useWallet();
+  const { walletAddress: contextWalletAddress, walletId: contextWalletId, isConnected: contextIsConnected, connectWallet: saveToContext } = useWallet();
+
+  // API URL configuration
+  const API_URL = process.env.REACT_APP_BACKEND_URL || 'https://rent-flow.onrender.com';
 
   const [lease, setLease] = useState<Lease | null>(null);
   const [loading, setLoading] = useState(true);
@@ -51,7 +54,6 @@ const LeaseSigningPage: React.FC = () => {
   // Use wallet from context instead of local state
   const arcWalletAddress = contextWalletAddress;
   const arcWalletId = contextWalletId;
-  const arcWalletType = contextWalletType;
   const arcWalletConnected = contextIsConnected;
 
   useEffect(() => {
@@ -146,7 +148,7 @@ const LeaseSigningPage: React.FC = () => {
       
       // The id from the URL is actually the application_id
       // First, get the lease by application_id
-      const response = await axios.get(`https://rent-flow.onrender.com/api/leases/by-application/${id}`);
+      const response = await axios.get(`${API_URL}/api/leases/by-application/${id}`);
       
       if (response.data.success && response.data.data) {
         const leaseData = response.data.data;
@@ -165,7 +167,7 @@ const LeaseSigningPage: React.FC = () => {
 
           // Fetch payments to check status
           try {
-            const paymentsResponse = await axios.get(`https://rent-flow.onrender.com/api/payments/lease/${leaseData.id}`);
+            const paymentsResponse = await axios.get(`${API_URL}/api/payments/lease/${leaseData.id}`);
             const payments = paymentsResponse.data?.data || [];
             const hasPendingPayments = payments.length === 0 || payments.some((p: any) => p.status === 'pending');
 
@@ -238,6 +240,9 @@ const LeaseSigningPage: React.FC = () => {
     // Save to WalletContext (which also saves to localStorage)
     saveToContext(walletAddress, walletId, walletType);
     
+    // Dispatch event to notify other components (e.g., WalletManagement tab)
+    window.dispatchEvent(new CustomEvent('walletConnected'));
+    
     // Close the modal
     setShowWalletModal(false);
     
@@ -283,7 +288,7 @@ const LeaseSigningPage: React.FC = () => {
 
       // Update lease in database - DON'T send wallet info for tenant signing
       // Tenant wallet should ONLY be set when they explicitly connect wallet for payments
-      const response = await axios.post(`https://rent-flow.onrender.com/api/leases/${lease.id}/sign`, {
+      const response = await axios.post(`${API_URL}/api/leases/${lease.id}/sign`, {
         signer_id: userProfile!.id,
         signature: mockSignature, // Database-only signature
         signer_type: 'tenant',
