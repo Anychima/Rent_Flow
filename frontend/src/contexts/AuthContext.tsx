@@ -10,7 +10,9 @@ const supabase = createClient(
       storageKey: 'rentflow-auth',
       storage: window.localStorage,
       autoRefreshToken: true,
-      detectSessionInUrl: true
+      detectSessionInUrl: true,
+      // Reduce token lifetime to force more frequent refreshes (in seconds)
+      // Default is 3600s (1 hour), we'll keep it but add better handling
     }
   }
 );
@@ -52,7 +54,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const lastFetchedUserId = useRef<string | null>(null);
   const isFetchingProfile = useRef<boolean>(false);
 
-  // Fetch user profile from database with loop prevention and retry logic
+  // Fetch user profile from database with loop prevention, retry logic, and timeout
   const fetchUserProfile = async (userId: string, retryCount = 0): Promise<UserProfile | null> => {
     // Prevent concurrent fetches for the same user
     if (isFetchingProfile.current && lastFetchedUserId.current === userId) {
@@ -66,28 +68,50 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       
       console.log(`[AuthContext] Fetching profile for user: ${userId} (attempt ${retryCount + 1})`);
       
-      // Try direct ID lookup first - use maybeSingle to avoid throwing on 0 rows
-      const { data, error } = await supabase
-        .from('users')
-        .select('*')
-        .eq('id', userId)
-        .maybeSingle();
+      // Add 10-second timeout to prevent indefinite hanging
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => {
+        controller.abort();
+        console.error('[AuthContext] Profile fetch timed out after 10 seconds');
+      }, 10000);
+      
+      try {
+        // Try direct ID lookup first - use maybeSingle to avoid throwing on 0 rows
+        const { data, error } = await supabase
+          .from('users')
+          .select('*')
+          .eq('id', userId)
+          .abortSignal(controller.signal)
+          .maybeSingle();
+        
+        clearTimeout(timeoutId);
 
-      if (error) {
-        console.error('[AuthContext] Profile fetch error:', error.message);
-        // Retry up to 2 times with exponential backoff
-        if (retryCount < 2) {
-          const delay = Math.pow(2, retryCount) * 1000; // 1s, 2s
-          console.log(`[AuthContext] Retrying in ${delay}ms...`);
-          await new Promise(resolve => setTimeout(resolve, delay));
-          isFetchingProfile.current = false;
-          return fetchUserProfile(userId, retryCount + 1);
+        if (error) {
+          console.error('[AuthContext] Profile fetch error:', error.message);
+          // Retry up to 2 times with exponential backoff
+          if (retryCount < 2) {
+            const delay = Math.pow(2, retryCount) * 1000; // 1s, 2s
+            console.log(`[AuthContext] Retrying in ${delay}ms...`);
+            await new Promise(resolve => setTimeout(resolve, delay));
+            isFetchingProfile.current = false;
+            return fetchUserProfile(userId, retryCount + 1);
+          }
+          throw error;
         }
-      }
 
-      if (data) {
-        console.log('[AuthContext] Profile loaded successfully:', data.email, 'Role:', data.role);
-        return data as UserProfile;
+        if (data) {
+          console.log('[AuthContext] Profile loaded successfully:', data.email, 'Role:', data.role);
+          return data as UserProfile;
+        }
+      } catch (fetchError: any) {
+        clearTimeout(timeoutId);
+        
+        if (fetchError.name === 'AbortError') {
+          console.error('[AuthContext] Profile fetch aborted due to timeout');
+          // Don't retry on timeout, return null
+          return null;
+        }
+        throw fetchError;
       }
 
       // If direct lookup returns no data, try email fallback ONCE
@@ -218,23 +242,77 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     initializeAuth();
 
-    // Set up periodic session refresh (every 5 minutes)
+    // Set up periodic session refresh and validation (every 2 minutes)
     refreshInterval = setInterval(async () => {
       if (!mounted) return;
       
       try {
-        await supabase.auth.getSession();
-        // Session is automatically refreshed by Supabase if needed
+        console.log('[AuthContext] Checking session validity...');
+        const { data: { session }, error } = await supabase.auth.getSession();
+        
+        if (error) {
+          console.error('[AuthContext] Session check error:', error);
+          // If session is invalid, clear everything and redirect to home
+          if (mounted) {
+            console.warn('[AuthContext] Invalid session detected, signing out...');
+            setUser(null);
+            setUserProfile(null);
+            setSession(null);
+            // Don't call signOut() to avoid recursion
+            await supabase.auth.signOut({ scope: 'local' });
+          }
+          return;
+        }
+        
+        if (!session) {
+          console.warn('[AuthContext] No active session found');
+          if (mounted && user) {
+            // Session expired, clear state
+            setUser(null);
+            setUserProfile(null);
+            setSession(null);
+          }
+          return;
+        }
+        
+        // Check if session is about to expire (within 5 minutes)
+        const expiresAt = session.expires_at;
+        if (expiresAt) {
+          const expiresIn = expiresAt - Math.floor(Date.now() / 1000);
+          
+          if (expiresIn < 300) { // Less than 5 minutes
+            console.log('[AuthContext] Session expiring soon, refreshing...');
+            const { data, error: refreshError } = await supabase.auth.refreshSession();
+            
+            if (refreshError) {
+              console.error('[AuthContext] Session refresh failed:', refreshError);
+              // Sign out on refresh failure
+              if (mounted) {
+                setUser(null);
+                setUserProfile(null);
+                setSession(null);
+                await supabase.auth.signOut({ scope: 'local' });
+              }
+            } else {
+              console.log('[AuthContext] Session refreshed successfully');
+              if (mounted && data.session) {
+                setSession(data.session);
+              }
+            }
+          }
+        }
       } catch (error) {
         console.error('[AuthContext] Session refresh error:', error);
       }
-    }, 5 * 60 * 1000); // Every 5 minutes
+    }, 2 * 60 * 1000); // Every 2 minutes
 
-    // Listen for auth changes
+    // Listen for auth changes with better error handling
     const {
       data: { subscription },
     } = supabase.auth.onAuthStateChange(async (event, session) => {  
       if (!mounted) return;
+      
+      console.log(`[AuthContext] Auth state changed: ${event}`);
       
       setSession(session);
       setUser(session?.user ?? null);
@@ -246,6 +324,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             setUserProfile(profile);
           }
         } catch (profileError) {
+          console.error('[AuthContext] Profile fetch failed:', profileError);
           if (mounted) {
             setUserProfile(null);
           }
@@ -263,11 +342,27 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       
       // Handle specific events
       if (event === 'SIGNED_OUT') {
+        console.log('[AuthContext] User signed out');
         if (mounted) {
           setUser(null);
           setUserProfile(null);
           setSession(null);
           setLoading(false);
+        }
+      }
+      
+      if (event === 'TOKEN_REFRESHED') {
+        console.log('[AuthContext] Token refreshed successfully');
+      }
+      
+      if (event === 'USER_UPDATED') {
+        console.log('[AuthContext] User updated');
+        // Refresh profile when user is updated
+        if (session?.user && mounted) {
+          const profile = await fetchUserProfile(session.user.id);
+          if (mounted) {
+            setUserProfile(profile);
+          }
         }
       }
     });
